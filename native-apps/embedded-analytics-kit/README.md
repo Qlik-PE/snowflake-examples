@@ -46,14 +46,16 @@ A Cortex Agent that provides a unified AI analytics experience over both Snowfla
 
 ## Data Model
 
-500 accounts, 13,656 total rows across 24 months (Jan 2023 - Dec 2024):
+2,000 accounts, ~100k total rows across 42 months (Mar 2023 - Jul 2026):
 
 | Table | Rows | Description |
 |-------|------|-------------|
-| accounts | 500 | Companies with segment, region, industry, status |
-| subscriptions | 500 | Plan tier (Starter/Professional/Enterprise), pricing |
-| monthly_revenue | 7,144 | MRR, expansion, contraction, churn per account/month |
-| usage_events | 5,512 | Logins, API calls, reports, GB scanned per account/month |
+| accounts | 2,000 | Companies with segment, region, industry, status |
+| subscriptions | 2,600 | Plan tier (Starter/Professional/Enterprise), pricing, add-ons |
+| monthly_revenue | 52,127 | MRR, expansion, contraction, churn per account/month |
+| usage_events | 43,238 | Logins, API calls, reports, GB scanned per account/month |
+
+10 industries with 200 accounts each (Technology, Financial, Healthcare, Retail, Manufacturing, Energy, Education, Media, Logistics, Travel). Even distribution across 3 segments and 4 regions.
 
 ### Metrics
 
