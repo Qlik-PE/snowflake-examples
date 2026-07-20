@@ -10,6 +10,7 @@ This repository contains working examples that demonstrate Snowflake features an
 
 ```
 snowflake-examples/
+├── mcp/              # MCP (Model Context Protocol) server integrations
 ├── sql/              # SQL scripts and queries
 ├── python/           # Python and Snowpark examples
 ├── streamlit/        # Streamlit in Snowflake apps
@@ -22,6 +23,7 @@ snowflake-examples/
 
 - **Data Engineering** - Streams, tasks, dynamic tables, Snowpipe, and data ingestion patterns
 - **Cortex AI** - AI functions, LLM integration, vector search, and ML pipelines
+- **MCP Integrations** - External MCP server connections for Cortex Agents (e.g., Qlik Cloud)
 - **Snowpark** - Python UDFs, stored procedures, and DataFrames
 - **Data Sharing** - Secure data sharing, listings, and clean rooms
 - **Native Apps** - Snowflake Native App Framework development
