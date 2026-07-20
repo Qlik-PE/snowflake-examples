@@ -1,6 +1,6 @@
 # Embedded Analytics Starter Kit
 
-A Snowflake Native App that provides a unified AI analytics experience over both Snowflake data and Qlik Cloud dashboards through a single Cortex Agent.
+A Cortex Agent that provides a unified AI analytics experience over both Snowflake data and Qlik Cloud dashboards — demonstrating the joint value of the Qlik + Snowflake partnership.
 
 ## Architecture
 
@@ -13,146 +13,126 @@ A Snowflake Native App that provides a unified AI analytics experience over both
                                 │
                                 ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Cortex Agent: analytics_agent                                      │
+│  Cortex Agent: CORTEX_APP.PUBLIC.SAAS_ANALYTICS_KIT                 │
 │  (orchestrates across both tool sources)                            │
 ├─────────────────────────────────┬───────────────────────────────────┤
 │                                 │                                   │
 │  Tool 1: SaaSMetrics            │  Tool 2: Qlik MCP Server          │
-│  (Cortex Analyst)               │  (External MCP)                   │
+│  (Cortex Analyst — fallback)    │  (External MCP — primary)         │
 │                                 │                                   │
 │  ┌───────────────────────┐      │  ┌────────────────────────────┐  │
-│  │ Semantic View         │      │  │ Qlik Cloud                 │  │
-│  │ ┌─────────────────┐   │      │  │                            │  │
-│  │ │ accounts        │   │      │  │  • App discovery           │  │
-│  │ │ subscriptions   │   │      │  │  • Sheet/chart creation    │  │
-│  │ │ monthly_revenue │   │      │  │  • Master items            │  │
-│  │ │ usage_events    │   │      │  │  • Bookmarks               │  │
-│  │ └─────────────────┘   │      │  │  • Data exploration        │  │
-│  │                       │      │  │  • Glossary                 │  │
-│  │ Metrics: MRR, ARR,    │      │  │  • Lineage                 │  │
-│  │ NRR, churn, expansion │      │  │  • 70+ tools               │  │
+│  │ Semantic View          │      │  │ Qlik Cloud App             │  │
+│  │ CORTEX_APP.PUBLIC.     │      │  │ dd64adae-c4db-46a7-...     │  │
+│  │ SAAS_METRICS_SV        │      │  │                            │  │
+│  │                        │      │  │  • App discovery           │  │
+│  │ Tables:                │      │  │  • Sheet/chart creation    │  │
+│  │  • accounts (500)      │      │  │  • Master items            │  │
+│  │  • subscriptions (500) │      │  │  • Bookmarks               │  │
+│  │  • monthly_revenue (7k)│      │  │  • Data exploration        │  │
+│  │  • usage_events (5.5k) │      │  │  • 70+ tools               │  │
 │  └───────────────────────┘      │  └────────────────────────────┘  │
 └─────────────────────────────────┴───────────────────────────────────┘
+```
+
+## Deployed Objects
+
+| Object | Location | Purpose |
+|--------|----------|---------|
+| Agent | `CORTEX_APP.PUBLIC.SAAS_ANALYTICS_KIT` | Dual-source Cortex Agent |
+| Semantic View | `CORTEX_APP.PUBLIC.SAAS_METRICS_SV` | Cortex Analyst text-to-SQL |
+| MCP Server | `CORTEX_APP.PUBLIC.QLIK_MCP_SERVER` | Qlik Cloud connection |
+| Tables | `CORTEX_APP.PUBLIC.{ACCOUNTS,SUBSCRIPTIONS,MONTHLY_REVENUE,USAGE_EVENTS}` | SaaS metrics data |
+| Qlik App | `dd64adae-c4db-46a7-857f-bc19dfe249a8` | 4 sheets with dashboards |
+
+## Data Model
+
+500 accounts, 13,656 total rows across 24 months (Jan 2023 - Dec 2024):
+
+| Table | Rows | Description |
+|-------|------|-------------|
+| accounts | 500 | Companies with segment, region, industry, status |
+| subscriptions | 500 | Plan tier (Starter/Professional/Enterprise), pricing |
+| monthly_revenue | 7,144 | MRR, expansion, contraction, churn per account/month |
+| usage_events | 5,512 | Logins, API calls, reports, GB scanned per account/month |
+
+### Metrics
+
+| Metric | Expression | Description |
+|--------|------------|-------------|
+| Total MRR | `Sum(MRR)` | Monthly Recurring Revenue |
+| Total ARR | `Sum(MRR) * 12` | Annualized Recurring Revenue |
+| Expansion | `Sum(EXPANSION_MRR)` | Upsell and cross-sell revenue |
+| Churn | `Sum(CHURNED_MRR)` | Revenue lost from cancellations |
+| NRR | `(MRR + Expansion - Contraction - Churn) / MRR * 100` | Net Revenue Retention % |
+| ARPA | `Avg(MRR)` | Average Revenue Per Account |
+| Active Accounts | `Count(DISTINCT ... status='Active')` | Paying customers |
+
+## Routing Rules
+
+The agent follows a strict routing hierarchy:
+
+1. **Qlik MCP is primary** — all business questions go to the Qlik app first
+2. **Cortex Analyst is fallback** — only used when Qlik MCP confirms a gap
+3. **Visualization requests are Qlik-only** — charts, sheets, filters
+4. **SQL analytics are Snowflake-only** — window functions, temporal patterns, hypotheticals
+
+## Qlik App Sheets
+
+| Sheet | Content |
+|-------|---------|
+| Executive Summary | 4 KPIs (MRR/ARR, Accounts, NRR, Expansion/Churn) + trend combo + segment/region/industry charts |
+| Revenue | MRR trend line + segment components combo + heatmap (segment x region) + top accounts table |
+| Customer Health | Status pie + churn by industry + engagement combo + usage vs revenue scatter + filters |
+| Subscriptions | Revenue by plan pie + ARPA & expansion combo + segment bar + pivot matrix + detail table |
+
+## Prerequisites
+
+- Snowflake account with Cortex Agents enabled
+- Qlik MCP server created (see `mcp/create-mcp-agent.sql`)
+- User has completed Qlik OAuth flow
+- ACCOUNTADMIN role
+
+## Usage
+
+**Snowflake Intelligence (CoWork):**
+The agent appears as "SaaS Analytics Kit (Qlik + Snowflake)" in the agent picker.
+
+**SQL:**
+```sql
+SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+    'CORTEX_APP.PUBLIC.SAAS_ANALYTICS_KIT',
+    '{"messages": [{"role": "user", "content": [{"type": "text", "text": "What is ARR by region?"}]}]}'
+);
+```
+
+**Authenticate Qlik:**
+```sql
+SELECT SYSTEM$START_USER_OAUTH_FLOW('QLIK_MCP_INTEGRATION');
 ```
 
 ## What's Included
 
 | File | Purpose |
 |------|---------|
-| `manifest.yml` | Native App metadata, version, privileges |
-| `setup_script.sql` | Creates tables, seed data, semantic view, agent |
-| `semantic/saas_metrics.yaml` | Semantic model documentation (reference) |
-| `agent/agent_spec.yaml` | Agent specification documentation (reference) |
-| `scripts/consumer_setup.sql` | Consumer admin runs post-install to connect Qlik |
-| `scripts/test_agent.sql` | Verification queries for both tool paths |
-
-## Data Model
-
-The app ships with a sample SaaS metrics dataset:
-
-- **accounts** (20 rows) — Companies with segment, region, industry, status
-- **subscriptions** (20 rows) — Plans with tier (Starter/Professional/Enterprise) and pricing
-- **monthly_revenue** (36 rows) — MRR, expansion, contraction, and churn per account/month
-- **usage_events** (31 rows) — Logins, API calls, reports, data scanned per account/month
-
-### Metrics Available
-
-| Metric | Description |
-|--------|-------------|
-| MRR | Monthly Recurring Revenue |
-| ARR | Annual Recurring Revenue (MRR × 12) |
-| Net Revenue Retention | (MRR + Expansion - Contraction - Churn) / MRR |
-| Expansion Revenue | Upsell and cross-sell revenue |
-| Churn | Revenue lost from cancellations |
-| ARPA | Average Revenue Per Account |
-| Active Accounts | Count of paying customers |
-| Churn Rate | Percentage of churned accounts |
-
-## Prerequisites
-
-- Snowflake account with Cortex Agents enabled
-- A Qlik MCP server already created (see `mcp/create-mcp-agent.sql`)
-- User has completed Qlik OAuth flow
-- ACCOUNTADMIN role for installation
-
-## Installation
-
-### 1. Create the Application Package
-
-```sql
-CREATE APPLICATION PACKAGE embedded_analytics_kit_pkg;
-CREATE SCHEMA embedded_analytics_kit_pkg.v1;
-
--- Upload all files to a stage
-CREATE STAGE embedded_analytics_kit_pkg.v1.app_stage;
--- PUT files to stage (via Snowflake CLI or UI)
-
-ALTER APPLICATION PACKAGE embedded_analytics_kit_pkg
-  ADD VERSION v1 USING '@embedded_analytics_kit_pkg.v1.app_stage';
-```
-
-### 2. Install the App
-
-```sql
-CREATE APPLICATION embedded_analytics_kit
-  FROM APPLICATION PACKAGE embedded_analytics_kit_pkg
-  USING VERSION v1;
-```
-
-### 3. Connect Qlik MCP Server
-
-Run `scripts/consumer_setup.sql` with your configuration:
-
-```sql
-SET QLIK_MCP_SERVER = 'YOUR_DB.YOUR_SCHEMA.YOUR_QLIK_MCP_SERVER';
--- ... then run the rest of consumer_setup.sql
-```
-
-### 4. Verify
-
-Run `scripts/test_agent.sql` to confirm both tool paths work.
-
-## Usage
-
-After installation, the agent is available via:
-
-**Snowflake Intelligence (CoWork):**
-The agent appears automatically with the name "SaaS Analytics Kit (Qlik + Snowflake)".
-
-**SQL:**
-```sql
-SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
-    'EMBEDDED_ANALYTICS_KIT.CORE.ANALYTICS_AGENT',
-    '{"messages": [{"role": "user", "content": [{"type": "text", "text": "What is ARR by region?"}]}]}'
-);
-```
-
-## Example Questions
-
-| Question | Tools Used |
-|----------|-----------|
-| "What is total MRR by segment?" | SaaSMetrics (Cortex Analyst) |
-| "Which accounts have the highest churn risk?" | SaaSMetrics |
-| "List my Qlik apps" | Qlik MCP |
-| "Create a bar chart of revenue by region" | Qlik MCP |
-| "What is NRR and do we have any dashboards tracking it?" | Both |
-| "Show me expansion revenue trends, then find related Qlik sheets" | Both |
-
-## Customization
-
-**Replace the data model:** Swap the sample tables in `setup_script.sql` with your own schema. Update the Semantic View definition to match your columns and metrics.
-
-**Add more tools:** Edit the agent spec to add additional MCP servers (GitHub, Jira, Salesforce) or Cortex Search services.
-
-**Change the semantic model:** Modify `semantic/saas_metrics.yaml` as your reference, then update the `CREATE SEMANTIC VIEW` DDL in `setup_script.sql` to match.
+| `setup_script.sql` | Creates tables, seed data, semantic view, agent (Native App format) |
+| `manifest.yml` | Native App metadata |
+| `semantic/saas_metrics.yaml` | Semantic model documentation |
+| `agent/agent_spec.yaml` | Agent specification reference |
+| `scripts/consumer_setup.sql` | Consumer onboarding (grants, MCP wiring) |
+| `scripts/authenticate_qlik.sql` | OAuth flow for Qlik MCP |
+| `scripts/test_agent.sql` | Verification queries |
+| `scripts/sample-questions.md` | 15 complex analytical questions |
+| `scripts/questions-by-source.md` | Questions unique to each platform |
 
 ## Why Both Platforms?
 
-| Capability | Snowflake | Qlik | Together |
-|-----------|-----------|------|----------|
-| Ad-hoc SQL queries | ✅ | — | Agent decides |
-| Governed metrics | Semantic View | Master Items | Aligned definitions |
-| Interactive exploration | — | ✅ Associative engine | Agent bridges both |
-| Visualization creation | — | ✅ Charts/sheets | Data from SF, viz in Qlik |
+| Capability | Snowflake Only | Qlik Only | Together |
+|-----------|---------------|-----------|----------|
+| Ad-hoc SQL (window functions, CTEs) | ✅ | — | Agent routes complex analytics to SQL |
+| Visualization & dashboards | — | ✅ | Agent creates charts on demand |
+| Governed metrics (semantic layer) | ✅ Semantic View | ✅ Master Items | Both aligned |
+| Associative exploration | — | ✅ | Agent leverages Qlik's green/white/gray |
 | Scale (billions of rows) | ✅ | — | Snowflake computes, Qlik displays |
-| AI/ML enrichment | ✅ Cortex AI | — | Enriched data flows to Qlik |
+| Consecutive-period patterns | ✅ LAG/LEAD | — | SQL window functions |
+| Hypothetical modeling | ✅ CASE/subqueries | — | What-if scenarios in SQL |
+| Bookmarks & selection states | — | ✅ | Save investigation context |
