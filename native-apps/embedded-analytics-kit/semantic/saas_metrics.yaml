@@ -1,0 +1,173 @@
+# Semantic Model: SaaS Metrics
+#
+# This YAML documents the semantic model for reference purposes.
+# The actual Semantic View is created inline in setup_script.sql using
+# the CREATE SEMANTIC VIEW DDL syntax.
+#
+# This file serves as the human-readable specification that the Native App's
+# semantic view implements.
+
+name: saas_metrics
+description: >
+  SaaS subscription and revenue metrics model for B2B companies.
+  Covers accounts, subscriptions, monthly revenue (MRR/ARR/churn/expansion),
+  and product usage analytics.
+
+tables:
+  - name: accounts
+    description: Customer accounts with segmentation and status
+    base_table: core.accounts
+    synonyms: [customers, clients, companies]
+    columns:
+      - name: account_id
+        description: Unique account identifier
+        synonyms: [customer_id, client_id]
+      - name: company_name
+        description: Customer company name
+        synonyms: [customer_name, account_name]
+      - name: segment
+        description: "Customer tier: Enterprise, Mid-Market, or SMB"
+        synonyms: [tier, customer_segment]
+        sample_values: [Enterprise, Mid-Market, SMB]
+      - name: region
+        description: Geographic region
+        synonyms: [geo, geography]
+        sample_values: [NA, EMEA, APAC, LATAM]
+      - name: industry
+        description: Business vertical
+        synonyms: [vertical, sector]
+      - name: signup_date
+        description: Date the account was created
+        synonyms: [registration_date]
+      - name: status
+        description: "Current account status: Active, Churned, or Trial"
+        synonyms: [account_status]
+        sample_values: [Active, Churned, Trial]
+
+  - name: subscriptions
+    description: Subscription plans and pricing per account
+    base_table: core.subscriptions
+    synonyms: [plans, contracts]
+    columns:
+      - name: subscription_id
+        description: Unique subscription identifier
+      - name: account_id
+        description: Foreign key to accounts
+      - name: plan_tier
+        description: "Pricing tier: Starter, Professional, or Enterprise"
+        synonyms: [plan, pricing_tier]
+        sample_values: [Starter, Professional, Enterprise]
+      - name: monthly_price
+        description: Monthly subscription price in USD
+        synonyms: [price, subscription_price]
+      - name: start_date
+        description: Subscription start date
+      - name: end_date
+        description: Subscription end date (NULL if active)
+        synonyms: [cancellation_date]
+      - name: status
+        description: "Subscription status: Active, Cancelled, or Upgraded"
+        sample_values: [Active, Cancelled, Upgraded]
+
+  - name: monthly_revenue
+    description: Monthly recurring revenue breakdown per account
+    base_table: core.monthly_revenue
+    synonyms: [revenue, mrr_data, financials]
+    columns:
+      - name: account_id
+        description: Foreign key to accounts
+      - name: revenue_month
+        description: First day of the reporting month
+        synonyms: [month, period]
+      - name: mrr
+        description: Monthly Recurring Revenue for the account
+        synonyms: [monthly_recurring_revenue]
+      - name: expansion_mrr
+        description: Revenue gained from upsells and cross-sells
+        synonyms: [upsell, expansion_revenue]
+      - name: contraction_mrr
+        description: Revenue lost from plan downgrades
+        synonyms: [downgrades]
+      - name: churned_mrr
+        description: Revenue lost from account cancellations
+        synonyms: [churn_revenue, lost_revenue]
+
+  - name: usage_events
+    description: Monthly aggregated product usage per account
+    base_table: core.usage_events
+    synonyms: [usage, activity, engagement]
+    columns:
+      - name: account_id
+        description: Foreign key to accounts
+      - name: event_month
+        description: First day of the usage month
+        synonyms: [usage_month]
+      - name: logins
+        description: Number of user logins in the month
+        synonyms: [login_count, sessions]
+      - name: api_calls
+        description: Number of API requests in the month
+        synonyms: [api_usage]
+      - name: reports_created
+        description: Number of reports generated
+        synonyms: [reports]
+      - name: data_gb_scanned
+        description: Gigabytes of data processed
+        synonyms: [data_scanned]
+
+relationships:
+  - from: accounts.account_id
+    to: subscriptions.account_id
+    type: one_to_many
+  - from: accounts.account_id
+    to: monthly_revenue.account_id
+    type: one_to_many
+  - from: accounts.account_id
+    to: usage_events.account_id
+    type: one_to_many
+
+metrics:
+  - name: total_mrr
+    expression: SUM(monthly_revenue.mrr)
+    description: Total Monthly Recurring Revenue across all accounts
+    synonyms: [aggregate mrr, total monthly recurring revenue]
+
+  - name: total_arr
+    expression: SUM(monthly_revenue.mrr) * 12
+    description: Annualized Recurring Revenue (MRR * 12)
+    synonyms: [annual recurring revenue, arr]
+
+  - name: net_revenue_retention
+    expression: >
+      (SUM(monthly_revenue.mrr) + SUM(monthly_revenue.expansion_mrr)
+       - SUM(monthly_revenue.contraction_mrr) - SUM(monthly_revenue.churned_mrr))
+      / NULLIF(SUM(monthly_revenue.mrr), 0) * 100
+    description: Net Revenue Retention rate as a percentage (>100% = net expansion)
+    synonyms: [NRR, net retention, dollar retention]
+
+  - name: total_expansion
+    expression: SUM(monthly_revenue.expansion_mrr)
+    description: Revenue gained from upsells and cross-sells
+    synonyms: [expansion revenue, upsell revenue]
+
+  - name: total_churn
+    expression: SUM(monthly_revenue.churned_mrr)
+    description: Revenue lost from account cancellations
+    synonyms: [churned revenue, lost revenue]
+
+  - name: avg_mrr_per_account
+    expression: AVG(monthly_revenue.mrr)
+    description: Average MRR per paying account (ARPA)
+    synonyms: [ARPA, average revenue per account]
+
+  - name: active_accounts
+    expression: COUNT(DISTINCT CASE WHEN accounts.status = 'Active' THEN accounts.account_id END)
+    description: Number of currently active (paying) accounts
+    synonyms: [paying customers, active customers]
+
+  - name: churn_rate
+    expression: >
+      COUNT(DISTINCT CASE WHEN accounts.status = 'Churned' THEN accounts.account_id END)
+      / NULLIF(COUNT(DISTINCT accounts.account_id), 0) * 100
+    description: Percentage of accounts that have churned
+    synonyms: [customer churn, logo churn rate]

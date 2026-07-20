@@ -1,6 +1,0 @@
-name: cortex-agent-chat
-channels:
-  - snowflake
-dependencies:
-  - snowflake-snowpark-python
-  - streamlit>=1.22.0
