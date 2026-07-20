@@ -2,8 +2,9 @@
 -- Embedded Analytics Starter Kit - Setup Script
 -- =============================================================================
 --
--- This is the Native App setup script. It runs automatically when the app is
--- installed and creates all objects needed for the embedded analytics experience:
+-- This setup script creates all objects for the embedded analytics experience.
+-- For production deployment, the data is generated at scale (500 accounts,
+-- 13k+ total rows across 24 months). The sample data below is a minimal seed.
 --
 --   1. Sample SaaS metrics data model (accounts, subscriptions, revenue, usage)
 --   2. Semantic View for Cortex Analyst text-to-SQL
@@ -381,3 +382,8 @@ mcp_servers:
 $$;
 
 GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;
+
+-- Set the agent profile so it appears in Snowflake Intelligence / CoWork
+ALTER AGENT core.analytics_agent SET
+    COMMENT = 'SaaS analytics agent with Qlik Cloud + Snowflake data',
+    PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';
