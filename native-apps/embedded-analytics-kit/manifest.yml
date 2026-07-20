@@ -7,13 +7,6 @@ version:
 
 artifacts:
   setup_script: setup_script.sql
-  default_streamlit: null
-
-privileges:
-  - CREATE SEMANTIC VIEW:
-      description: "Create semantic views for Cortex Analyst text-to-SQL"
-  - CREATE AGENT:
-      description: "Create a Cortex Agent wired to both Semantic View and Qlik MCP"
 
 references:
   - consumer_warehouse:

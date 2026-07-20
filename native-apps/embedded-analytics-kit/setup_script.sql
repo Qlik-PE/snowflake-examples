@@ -17,17 +17,17 @@
 -- =============================================================================
 
 -- =============================================================================
+-- Application Role
+-- =============================================================================
+
+CREATE APPLICATION ROLE IF NOT EXISTS app_user;
+
+-- =============================================================================
 -- Schema
 -- =============================================================================
 
 CREATE SCHEMA IF NOT EXISTS core;
 GRANT USAGE ON SCHEMA core TO APPLICATION ROLE app_user;
-
--- =============================================================================
--- Application Role
--- =============================================================================
-
-CREATE APPLICATION ROLE IF NOT EXISTS app_user;
 
 -- =============================================================================
 -- Reference Registration Callback
@@ -243,97 +243,60 @@ GRANT SELECT ON ALL TABLES IN SCHEMA core TO APPLICATION ROLE app_user;
 -- =============================================================================
 
 CREATE OR REPLACE SEMANTIC VIEW core.saas_metrics_sv
-  COMMENT = 'SaaS metrics semantic model for Cortex Analyst'
-AS
-  -- Base tables
   TABLES (
-    core.accounts AS accounts
-      WITH SYNONYMS = ('customers', 'clients', 'companies')
-      WITH COLUMNS (
-        account_id WITH SYNONYMS = ('customer_id', 'client_id'),
-        company_name WITH SYNONYMS = ('customer_name', 'account_name'),
-        segment WITH SYNONYMS = ('tier', 'customer_segment'),
-        region WITH SYNONYMS = ('geo', 'geography'),
-        industry WITH SYNONYMS = ('vertical', 'sector'),
-        signup_date WITH SYNONYMS = ('registration_date', 'created_date'),
-        status WITH SYNONYMS = ('account_status')
-      ),
-    core.subscriptions AS subscriptions
-      WITH SYNONYMS = ('plans', 'contracts')
-      WITH COLUMNS (
-        subscription_id,
-        account_id,
-        plan_tier WITH SYNONYMS = ('plan', 'pricing_tier', 'plan_name'),
-        monthly_price WITH SYNONYMS = ('price', 'subscription_price'),
-        start_date WITH SYNONYMS = ('subscription_start'),
-        end_date WITH SYNONYMS = ('subscription_end', 'cancellation_date'),
-        status WITH SYNONYMS = ('subscription_status')
-      ),
-    core.monthly_revenue AS monthly_revenue
-      WITH SYNONYMS = ('revenue', 'mrr_data', 'financials')
-      WITH COLUMNS (
-        account_id,
-        revenue_month WITH SYNONYMS = ('month', 'period', 'reporting_month'),
-        mrr WITH SYNONYMS = ('monthly_recurring_revenue', 'recurring_revenue'),
-        expansion_mrr WITH SYNONYMS = ('upsell', 'expansion_revenue', 'growth_revenue'),
-        contraction_mrr WITH SYNONYMS = ('downgrades', 'contraction'),
-        churned_mrr WITH SYNONYMS = ('churn_revenue', 'lost_revenue')
-      ),
-    core.usage_events AS usage_events
-      WITH SYNONYMS = ('usage', 'activity', 'engagement')
-      WITH COLUMNS (
-        account_id,
-        event_month WITH SYNONYMS = ('month', 'usage_month'),
-        logins WITH SYNONYMS = ('login_count', 'sessions'),
-        api_calls WITH SYNONYMS = ('api_usage', 'api_requests'),
-        reports_created WITH SYNONYMS = ('reports', 'report_count'),
-        data_gb_scanned WITH SYNONYMS = ('data_scanned', 'gb_processed')
-      )
+    core.accounts primary key (account_id)
+      comment='Customer accounts with segment, region, industry, and status',
+    core.subscriptions primary key (subscription_id)
+      comment='Subscription plans with tier and pricing per account',
+    core.monthly_revenue
+      comment='Monthly recurring revenue breakdown per account',
+    core.usage_events
+      comment='Monthly aggregated product usage per account'
   )
-  -- Relationships
   RELATIONSHIPS (
-    accounts (account_id) REFERENCES subscriptions (account_id),
-    accounts (account_id) REFERENCES monthly_revenue (account_id),
-    accounts (account_id) REFERENCES usage_events (account_id)
+    SUBSCRIPTIONS(account_id) REFERENCES ACCOUNTS(account_id),
+    MONTHLY_REVENUE(account_id) REFERENCES ACCOUNTS(account_id),
+    USAGE_EVENTS(account_id) REFERENCES ACCOUNTS(account_id)
   )
-  -- Metrics
+  FACTS (
+    ACCOUNTS.segment as segment,
+    ACCOUNTS.region as region,
+    ACCOUNTS.industry as industry,
+    ACCOUNTS.status as status,
+    ACCOUNTS.company_name as company_name,
+    ACCOUNTS.signup_date as signup_date,
+    SUBSCRIPTIONS.plan_tier as plan_tier,
+    SUBSCRIPTIONS.monthly_price as monthly_price,
+    MONTHLY_REVENUE.revenue_month as revenue_month,
+    MONTHLY_REVENUE.mrr as mrr,
+    MONTHLY_REVENUE.expansion_mrr as expansion_mrr,
+    MONTHLY_REVENUE.contraction_mrr as contraction_mrr,
+    MONTHLY_REVENUE.churned_mrr as churned_mrr,
+    USAGE_EVENTS.event_month as event_month,
+    USAGE_EVENTS.logins as logins,
+    USAGE_EVENTS.api_calls as api_calls,
+    USAGE_EVENTS.reports_created as reports_created,
+    USAGE_EVENTS.data_gb_scanned as data_gb_scanned
+  )
   METRICS (
-    total_mrr AS SUM(monthly_revenue.mrr)
-      WITH SYNONYMS = ('total monthly recurring revenue', 'aggregate mrr')
-      WITH DESCRIPTION = 'Sum of all monthly recurring revenue across accounts',
-    total_arr AS SUM(monthly_revenue.mrr) * 12
-      WITH SYNONYMS = ('annual recurring revenue', 'arr')
-      WITH DESCRIPTION = 'Annualized recurring revenue (MRR * 12)',
-    total_expansion AS SUM(monthly_revenue.expansion_mrr)
-      WITH SYNONYMS = ('expansion revenue', 'upsell revenue')
-      WITH DESCRIPTION = 'Revenue gained from upsells and cross-sells',
-    total_contraction AS SUM(monthly_revenue.contraction_mrr)
-      WITH SYNONYMS = ('contraction revenue', 'downgrade revenue')
-      WITH DESCRIPTION = 'Revenue lost from plan downgrades',
-    total_churn AS SUM(monthly_revenue.churned_mrr)
-      WITH SYNONYMS = ('churned revenue', 'lost revenue')
-      WITH DESCRIPTION = 'Revenue lost from account cancellations',
-    net_revenue_retention AS
-      (SUM(monthly_revenue.mrr) + SUM(monthly_revenue.expansion_mrr)
-       - SUM(monthly_revenue.contraction_mrr) - SUM(monthly_revenue.churned_mrr))
-      / NULLIF(SUM(monthly_revenue.mrr), 0) * 100
-      WITH SYNONYMS = ('NRR', 'net retention', 'dollar retention')
-      WITH DESCRIPTION = 'Net revenue retention rate as a percentage',
-    avg_mrr_per_account AS AVG(monthly_revenue.mrr)
-      WITH SYNONYMS = ('ARPA', 'average revenue per account')
-      WITH DESCRIPTION = 'Average MRR across all paying accounts',
-    active_accounts AS COUNT(DISTINCT CASE WHEN accounts.status = 'Active' THEN accounts.account_id END)
-      WITH SYNONYMS = ('paying customers', 'active customers')
-      WITH DESCRIPTION = 'Count of accounts with Active status',
-    churned_accounts AS COUNT(DISTINCT CASE WHEN accounts.status = 'Churned' THEN accounts.account_id END)
-      WITH SYNONYMS = ('lost customers', 'cancelled accounts')
-      WITH DESCRIPTION = 'Count of accounts that have churned',
-    avg_logins AS AVG(usage_events.logins)
-      WITH SYNONYMS = ('average logins', 'login frequency')
-      WITH DESCRIPTION = 'Average monthly login count per account',
-    total_api_calls AS SUM(usage_events.api_calls)
-      WITH SYNONYMS = ('api volume', 'total api usage')
-      WITH DESCRIPTION = 'Total API calls across all accounts'
+    MONTHLY_REVENUE.total_mrr as SUM(MONTHLY_REVENUE.mrr)
+      with synonyms=('monthly recurring revenue', 'aggregate mrr'),
+    MONTHLY_REVENUE.total_arr as SUM(MONTHLY_REVENUE.mrr) * 12
+      with synonyms=('annual recurring revenue', 'arr'),
+    MONTHLY_REVENUE.total_expansion as SUM(MONTHLY_REVENUE.expansion_mrr)
+      with synonyms=('expansion revenue', 'upsell revenue'),
+    MONTHLY_REVENUE.total_churn as SUM(MONTHLY_REVENUE.churned_mrr)
+      with synonyms=('churned revenue', 'lost revenue'),
+    MONTHLY_REVENUE.avg_mrr_per_account as AVG(MONTHLY_REVENUE.mrr)
+      with synonyms=('ARPA', 'average revenue per account'),
+    ACCOUNTS.active_accounts as COUNT(DISTINCT CASE WHEN ACCOUNTS.status = 'Active' THEN ACCOUNTS.account_id END)
+      with synonyms=('paying customers', 'active customers'),
+    ACCOUNTS.churned_accounts as COUNT(DISTINCT CASE WHEN ACCOUNTS.status = 'Churned' THEN ACCOUNTS.account_id END)
+      with synonyms=('lost customers', 'cancelled accounts'),
+    USAGE_EVENTS.avg_logins as AVG(USAGE_EVENTS.logins)
+      with synonyms=('average logins', 'login frequency'),
+    USAGE_EVENTS.total_api_calls as SUM(USAGE_EVENTS.api_calls)
+      with synonyms=('api volume', 'total api usage')
   );
 
 GRANT SELECT ON SEMANTIC VIEW core.saas_metrics_sv TO APPLICATION ROLE app_user;
@@ -408,6 +371,13 @@ tools:
 tool_resources:
   SaaSMetrics:
     semantic_view: "core.saas_metrics_sv"
+    execution_environment:
+      type: warehouse
+      warehouse: "DEMO_WH"
+
+mcp_servers:
+  - server_spec:
+      name: "CORTEX_APP.PUBLIC.QLIK_MCP_SERVER"
 $$;
 
 GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;
