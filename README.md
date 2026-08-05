@@ -4,38 +4,42 @@ A collection of example code and reference implementations for Snowflake, mainta
 
 ## Overview
 
-This repository contains working examples that demonstrate Snowflake features and capabilities. Each example is self-contained and includes the necessary setup instructions to run independently.
+This repository contains working examples that demonstrate Snowflake + Qlik integration patterns, Cortex AI features, and Native App development. Each example is self-contained and includes setup instructions.
 
 ## Repository Structure
 
 ```
 snowflake-examples/
-├── mcp/              # MCP (Model Context Protocol) server integrations
-├── sql/              # SQL scripts and queries
-├── python/           # Python and Snowpark examples
-├── streamlit/        # Streamlit in Snowflake apps
-├── notebooks/        # Snowflake Notebooks
-├── pipelines/        # Data pipeline examples
-└── native-apps/      # Native App Framework examples
+├── mcp/                        # MCP server integrations (Qlik Cloud ↔ Snowflake)
+├── sql/                        # SQL scripts and demos
+└── native-apps/                # Native App Framework examples
+    ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
+    └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
 ```
 
-## Topics Covered
+## What's Included
 
-- **Data Engineering** - Streams, tasks, dynamic tables, Snowpipe, and data ingestion patterns
-- **Cortex AI** - AI functions, LLM integration, vector search, and ML pipelines
-- **MCP Integrations** - External MCP server connections for Cortex Agents (e.g., Qlik Cloud)
-- **Snowpark** - Python UDFs, stored procedures, and DataFrames
-- **Data Sharing** - Secure data sharing, listings, and clean rooms
-- **Native Apps** - Snowflake Native App Framework development
-- **Streamlit** - Building interactive apps within Snowflake
-- **Security & Governance** - RBAC, masking policies, and access controls
+### MCP Integrations (`mcp/`)
+
+- **[create-mcp-agent.sql](mcp/create-mcp-agent.sql)** — End-to-end SQL script to provision a Qlik Cloud MCP integration in Snowflake (API integration, external MCP server, Cortex Agent, Snowflake Intelligence registration).
+- **[coco-qlik-mcp-public-client-setup.md](mcp/coco-qlik-mcp-public-client-setup.md)** — Setup guide for connecting Cortex Code CLI to Qlik MCP using a public OAuth client with PKCE.
+- **[coco-desktop-qlik-mcp-public-client-setup-windows.md](mcp/coco-desktop-qlik-mcp-public-client-setup-windows.md)** — Same as above, tailored for Cortex Code Desktop on Windows.
+
+### SQL Demos (`sql/`)
+
+- **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT, CLASSIFY, EMBED) using a sample product reviews dataset.
+
+### Native Apps (`native-apps/`)
+
+- **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent that provides a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
+- **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server. Copy and customize.
 
 ## Prerequisites
 
-- A Snowflake account
+- A Snowflake account with Cortex AI enabled
 - Appropriate roles and permissions for the features being demonstrated
-- Python 3.8+ (for Python-based examples)
 - [Snowflake CLI](https://docs.snowflake.com/en/developer-guide/snowflake-cli/index) (recommended)
+- A Qlik Cloud tenant (for MCP and Native App examples)
 
 ## Getting Started
 
