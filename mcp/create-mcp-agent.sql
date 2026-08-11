@@ -124,6 +124,7 @@ SHOW API INTEGRATIONS LIKE '%qlik%';
 -- the URL that Cortex Agents will call to invoke MCP tools.
 -- =============================================================================
 
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA);
 USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
@@ -182,7 +183,7 @@ SET AGENT_FQN = CURRENT_DATABASE() || '.' || CURRENT_SCHEMA() || '.' || $AGENT_N
 SET AGENT_DISPLAY_NAME = 'Qlik MCP ' || $TENANT;
 
 EXECUTE IMMEDIATE
-$$
+$body$
 DECLARE
     v_agent_fqn VARCHAR;
     v_agent_mcp_ref VARCHAR;
@@ -332,7 +333,7 @@ BEGIN
     EXECUTE IMMEDIATE 'ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT ADD AGENT ' || v_agent_fqn;
     EXECUTE IMMEDIATE 'GRANT USAGE ON SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT TO ROLE IDENTIFIER(''' || v_allowed_role || ''')';
 END;
-$$;
+$body$;
 
 -- =============================================================================
 -- Step 5: User Authentication (manual, per-user)
