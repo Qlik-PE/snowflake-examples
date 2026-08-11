@@ -11,8 +11,8 @@
 --
 -- What is created:
 --   - API Integration:       <INTEGRATION_NAME>  (OAuth2, external_mcp provider)
---   - External MCP Server:   <MCP_SERVER_NAME>   (in current DB/schema)
---   - Cortex Agent:          <AGENT_NAME>        (in current DB/schema)
+--   - External MCP Server:   <MCP_SERVER_NAME>   (in TARGET_DATABASE.TARGET_SCHEMA)
+--   - Cortex Agent:          <AGENT_NAME>        (in TARGET_DATABASE.TARGET_SCHEMA)
 --   - Snowflake Intelligence: SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT (if not exists)
 --
 -- Prerequisites:
@@ -30,8 +30,9 @@
 --        SELECT SYSTEM$START_USER_OAUTH_FLOW('<INTEGRATION_NAME>');
 --
 -- Idempotency:
---   This script uses CREATE OR REPLACE and is safe to re-run. However,
---   re-running will invalidate existing OAuth tokens for the integration.
+--   This script uses DROP IF EXISTS + CREATE (since OR REPLACE is not
+--   supported for external_mcp API integrations) and is safe to re-run.
+--   Re-running will invalidate existing OAuth tokens for the integration.
 --
 -- =============================================================================
 
@@ -52,6 +53,10 @@ SET
     CLIENT_SECRET = '<your-oauth-client-secret>'; -- From Qlik Management Console > OAuth
 SET 
     ALLOWED_ROLE  = 'QLIK_MCP_USER';  -- Role granted access (create this role first; avoid PUBLIC)
+SET
+    TARGET_DATABASE = '<your-database>'; -- Database for MCP server and agent objects
+SET
+    TARGET_SCHEMA = '<your-schema>'; -- Schema for MCP server and agent objects
 SET
     MCP_SERVER_NAME = 'qlik_mcp_server'; -- Name for the MCP server object
 SET
@@ -89,8 +94,8 @@ BEGIN
     SELECT GETVARIABLE('INTEGRATION_NAME') INTO v_integration_name;
     v_mcp_url := 'https://' || v_tenant || '/api/ai/mcp';
 
-    sql_stmt := 'CREATE OR REPLACE API INTEGRATION ' || v_integration_name
-        || ' COMMENT = ''API integration for Qlik MCP server with OAuth2 authentication'''
+    EXECUTE IMMEDIATE 'DROP API INTEGRATION IF EXISTS ' || v_integration_name;
+    sql_stmt := 'CREATE API INTEGRATION ' || v_integration_name
         || ' API_PROVIDER = external_mcp'
         || ' API_ALLOWED_PREFIXES = (''' || v_mcp_url || ''')'
         || ' API_USER_AUTHENTICATION = ('
@@ -103,7 +108,8 @@ BEGIN
         || '   OAUTH_REFRESH_TOKEN_VALIDITY = 86400'
         || '   OAUTH_ALLOWED_SCOPES = (''user_default'', ''mcp:execute'')'
         || ' )'
-        || ' ENABLED = TRUE';
+        || ' ENABLED = TRUE'
+        || ' COMMENT = ''API integration for Qlik MCP server with OAuth2 authentication''';
     EXECUTE IMMEDIATE sql_stmt;
 END;
 $$;
@@ -117,6 +123,9 @@ SHOW API INTEGRATIONS LIKE '%qlik%';
 -- MCP endpoint. It references the API integration for authentication and defines
 -- the URL that Cortex Agents will call to invoke MCP tools.
 -- =============================================================================
+
+USE DATABASE IDENTIFIER($TARGET_DATABASE);
+USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
 SET DISPLAY = 'Qlik MCP server ' || $TENANT;
 
@@ -141,13 +150,12 @@ BEGIN
 
     sql_stmt := 'CREATE OR REPLACE EXTERNAL MCP SERVER ' || v_server_name
         || ' WITH DISPLAY_NAME = ''' || v_display || ''''
+        || ' URL = ''' || v_mcp_url || ''''
         || ' API_INTEGRATION = ' || v_integration_name;
     EXECUTE IMMEDIATE sql_stmt;
 
-    EXECUTE IMMEDIATE 'ALTER EXTERNAL MCP SERVER ' || v_server_name || ' SET URL = ''' || v_mcp_url || '''';
-
     EXECUTE IMMEDIATE 'GRANT USAGE ON INTEGRATION ' || v_integration_name || ' TO ROLE IDENTIFIER(''' || v_allowed_role || ''')';
-    EXECUTE IMMEDIATE 'GRANT USAGE ON MCP SERVER ' || v_server_name || ' TO ROLE IDENTIFIER(''' || v_allowed_role || ''')';
+    EXECUTE IMMEDIATE 'GRANT USAGE ON EXTERNAL MCP SERVER ' || v_server_name || ' TO ROLE IDENTIFIER(''' || v_allowed_role || ''')';
 END;
 $$;
 
