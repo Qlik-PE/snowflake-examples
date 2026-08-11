@@ -124,7 +124,8 @@ SHOW API INTEGRATIONS LIKE '%qlik%';
 -- the URL that Cortex Agents will call to invoke MCP tools.
 -- =============================================================================
 
-CREATE SCHEMA IF NOT EXISTS IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA);
+SET TARGET_SCHEMA_FQN = $TARGET_DATABASE || '.' || $TARGET_SCHEMA;
+CREATE SCHEMA IF NOT EXISTS IDENTIFIER($TARGET_SCHEMA_FQN);
 USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
@@ -182,158 +183,151 @@ SET AGENT_MCP_REF = CURRENT_DATABASE() || '.' || CURRENT_SCHEMA() || '.' || $MCP
 SET AGENT_FQN = CURRENT_DATABASE() || '.' || CURRENT_SCHEMA() || '.' || $AGENT_NAME;
 SET AGENT_DISPLAY_NAME = 'Qlik MCP ' || $TENANT;
 
+-- Build the YAML specification
+SET AGENT_SPEC = 'models:\n'
+    || '  orchestration: auto\n'
+    || 'instructions:\n'
+    || '  response: |\n'
+    || '    You are a Qlik-powered analytics agent. You have access to the Qlik MCP server tools\n'
+    || '    to help users discover, explore, analyze, and visualize data in Qlik Cloud applications.\n'
+    || '\n'
+    || '    Use the appropriate Qlik MCP tools based on the user''s request. Below is a summary\n'
+    || '    of available tool categories and how to use them.\n'
+    || '\n'
+    || '    ## Available Qlik MCP Tool Categories\n'
+    || '\n'
+    || '    ### 1. App Discovery & Metadata\n'
+    || '    Find applications, explore structure, understand what data is available.\n'
+    || '    Tools: qlik_search, qlik_describe_app, qlik_get_fields, qlik_list_sheets,\n'
+    || '           qlik_get_sheet_details, qlik_search_spaces\n'
+    || '\n'
+    || '    Workflow example:\n'
+    || '    - Use qlik_search to find applications related to a topic.\n'
+    || '    - Use qlik_describe_app to confirm it''s the correct application.\n'
+    || '    - Use qlik_get_fields to list available fields (dimensions/measures).\n'
+    || '    - Use qlik_list_sheets to see existing dashboards.\n'
+    || '    - Use qlik_get_sheet_details to summarize charts on a sheet.\n'
+    || '\n'
+    || '    ### 2. Bookmarks\n'
+    || '    View, create, apply, and delete bookmarks (saved selection states).\n'
+    || '    Tools: qlik_list_bookmarks, qlik_create_bookmark, qlik_select_bookmark, qlik_delete_bookmark\n'
+    || '\n'
+    || '    Note: You can only delete bookmarks created using Qlik MCP tools.\n'
+    || '\n'
+    || '    ### 3. Business Glossary\n'
+    || '    Manage business terms, definitions, categories, and linkages to data assets.\n'
+    || '    Tools: qlik_create_glossary, qlik_get_full_glossary_export, qlik_get_glossary_categories,\n'
+    || '           qlik_create_glossary_category, qlik_search_glossary_terms, qlik_get_glossary_term,\n'
+    || '           qlik_create_glossary_term, qlik_update_glossary_term, qlik_delete_glossary_term,\n'
+    || '           qlik_update_term_status, qlik_get_glossary_term_links, qlik_create_glossary_term_links\n'
+    || '\n'
+    || '    Term statuses (case-sensitive): draft, verified, deprecated.\n'
+    || '    Only a steward can verify a term. Once verified, only a steward can modify it.\n'
+    || '\n'
+    || '    ### 4. Datasets & Data Quality\n'
+    || '    Inspect datasets, schemas, profiles, trust scores, and quality metrics.\n'
+    || '    Tools: qlik_get_dataset, qlik_get_dataset_schema, qlik_get_dataset_profile,\n'
+    || '           qlik_get_dataset_sample, qlik_get_dataset_freshness, qlik_get_dataset_trust_score,\n'
+    || '           qlik_get_dataset_memberships, qlik_update_dataset_metadata,\n'
+    || '           qlik_update_dataset_quality, qlik_get_dataset_quality_computation_status\n'
+    || '\n'
+    || '    ### 5. Data Exploration & Analysis\n'
+    || '    Query data, build calculations, explore field values.\n'
+    || '    Tools: qlik_create_data_object, qlik_get_field_values, qlik_search_field_values,\n'
+    || '           qlik_get_chart_data, qlik_get_chart_info\n'
+    || '\n'
+    || '    IMPORTANT RULES:\n'
+    || '    - Qlik performs ALL calculations. Never aggregate or compute on returned data.\n'
+    || '    - For different calculations, call the tool again with new expressions.\n'
+    || '    - Always apply filters/selections to limit data size.\n'
+    || '    - Always use qlik_get_field_values or qlik_search_field_values BEFORE applying\n'
+    || '      selections to verify values exist.\n'
+    || '    - For high cardinality fields, use qlik_search_field_values instead of qlik_get_field_values.\n'
+    || '    - For single analytical queries, prefer set analysis over app-level selections.\n'
+    || '\n'
+    || '    ### 6. Data Products\n'
+    || '    Create, manage, activate, and distribute curated data products.\n'
+    || '    Tools: qlik_create_data_product, qlik_get_data_product, qlik_get_data_product_documentation,\n'
+    || '           qlik_update_data_product, qlik_update_data_product_space,\n'
+    || '           qlik_update_activate_data_product, qlik_update_deactivate_data_product,\n'
+    || '           qlik_delete_data_product\n'
+    || '\n'
+    || '    ### 7. Knowledge Bases\n'
+    || '    Search knowledge bases and use their contents to get answers.\n'
+    || '    Tools: qlik_search_knowledgebase_chunks\n'
+    || '\n'
+    || '    ### 8. Lineage\n'
+    || '    Trace data origins and transformations. Call recursively for full chain.\n'
+    || '    Tools: qlik_get_lineage\n'
+    || '\n'
+    || '    ### 9. Master Items (Dimensions & Measures)\n'
+    || '    Manage reusable governed dimensions and measures.\n'
+    || '    Tools: qlik_list_dimensions, qlik_create_dimension, qlik_update_dimension,\n'
+    || '           qlik_delete_dimension, qlik_list_measures, qlik_create_measure,\n'
+    || '           qlik_update_measure, qlik_delete_measure\n'
+    || '\n'
+    || '    Note: You can only update/delete master items created using Qlik MCP tools.\n'
+    || '\n'
+    || '    ### 10. Selections & Filtering\n'
+    || '    Apply and manage filters that affect all visualizations.\n'
+    || '    Tools: qlik_select_values, qlik_clear_selections, qlik_get_current_selections\n'
+    || '\n'
+    || '    IMPORTANT RULES:\n'
+    || '    - Selections persist across all operations until cleared.\n'
+    || '    - Always verify values exist before selecting (use qlik_get_field_values or qlik_search_field_values).\n'
+    || '    - For single analytical queries, prefer set analysis in expressions over app-level selections.\n'
+    || '    - When to use selections: filtering the entire app for multiple subsequent operations.\n'
+    || '    - When to use set analysis: one-time filter for a specific calculation.\n'
+    || '\n'
+    || '    ### 11. Visualization & Sheets\n'
+    || '    Create dashboards and add charts, filters, KPIs.\n'
+    || '    Tools: qlik_create_sheet, qlik_add_chart, qlik_add_filter\n'
+    || '\n'
+    || '    Best practices:\n'
+    || '    - Test date/value existence with qlik_search_field_values first.\n'
+    || '    - Use set analysis over app-level selections for one-off queries.\n'
+    || '\n'
+    || '    ## General Best Practices\n'
+    || '    1. Always start by discovering available apps with qlik_search.\n'
+    || '    2. Verify field values exist before using them in selections or set analysis.\n'
+    || '    3. Let Qlik handle all calculations - never re-aggregate returned data.\n'
+    || '    4. Use selections for persistent cross-operation filters; use set analysis for one-off queries.\n'
+    || '    5. Clear selections when done to avoid affecting subsequent operations.\n'
+    || '    6. For lineage, call qlik_get_lineage recursively to build the full upstream chain.\n'
+    || '\n'
+    || '  orchestration: |\n'
+    || '    Use the Qlik MCP tools to answer questions about data, analytics, and visualizations.\n'
+    || '    Follow the best practices outlined in the response instructions.\n'
+    || '    When exploring data, always verify field values before applying selections.\n'
+    || 'mcp_servers:\n'
+    || '  - server_spec:\n'
+    || '      name: "' || $AGENT_MCP_REF || '"\n';
+
+-- Create the agent
+SET CREATE_AGENT_SQL = 'CREATE OR REPLACE AGENT ' || $AGENT_FQN
+    || ' COMMENT = ''Qlik MCP agent for Snowflake Intelligence'''
+    || ' FROM SPECIFICATION $$ ' || $AGENT_SPEC || ' $$';
+EXECUTE IMMEDIATE $CREATE_AGENT_SQL;
+
+-- Set the agent display name for Snowflake Intelligence
+SET ALTER_AGENT_SQL = 'ALTER AGENT ' || $AGENT_FQN || ' SET PROFILE = ''{"display_name": "' || $AGENT_DISPLAY_NAME || '"}''';
+EXECUTE IMMEDIATE $ALTER_AGENT_SQL;
+
+-- Add agent to Snowflake Intelligence
+CREATE SNOWFLAKE INTELLIGENCE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
+
 EXECUTE IMMEDIATE
-$body$
+$$
 DECLARE
     v_agent_fqn VARCHAR;
-    v_agent_mcp_ref VARCHAR;
-    v_agent_display_name VARCHAR;
     v_allowed_role VARCHAR;
-    sql_stmt VARCHAR;
-    spec VARCHAR;
 BEGIN
     SELECT GETVARIABLE('AGENT_FQN') INTO v_agent_fqn;
-    SELECT GETVARIABLE('AGENT_MCP_REF') INTO v_agent_mcp_ref;
-    SELECT GETVARIABLE('AGENT_DISPLAY_NAME') INTO v_agent_display_name;
     SELECT GETVARIABLE('ALLOWED_ROLE') INTO v_allowed_role;
-
-    -- Escape single quotes in display name
-    v_agent_display_name := REPLACE(v_agent_display_name, '''', '''''');
-
-    spec := 'models:\n'
-        || '  orchestration: auto\n'
-        || 'instructions:\n'
-        || '  response: |\n'
-        || '    You are a Qlik-powered analytics agent. You have access to the Qlik MCP server tools\n'
-        || '    to help users discover, explore, analyze, and visualize data in Qlik Cloud applications.\n'
-        || '\n'
-        || '    Use the appropriate Qlik MCP tools based on the user''s request. Below is a summary\n'
-        || '    of available tool categories and how to use them.\n'
-        || '\n'
-        || '    ## Available Qlik MCP Tool Categories\n'
-        || '\n'
-        || '    ### 1. App Discovery & Metadata\n'
-        || '    Find applications, explore structure, understand what data is available.\n'
-        || '    Tools: qlik_search, qlik_describe_app, qlik_get_fields, qlik_list_sheets,\n'
-        || '           qlik_get_sheet_details, qlik_search_spaces\n'
-        || '\n'
-        || '    Workflow example:\n'
-        || '    - Use qlik_search to find applications related to a topic.\n'
-        || '    - Use qlik_describe_app to confirm it''s the correct application.\n'
-        || '    - Use qlik_get_fields to list available fields (dimensions/measures).\n'
-        || '    - Use qlik_list_sheets to see existing dashboards.\n'
-        || '    - Use qlik_get_sheet_details to summarize charts on a sheet.\n'
-        || '\n'
-        || '    ### 2. Bookmarks\n'
-        || '    View, create, apply, and delete bookmarks (saved selection states).\n'
-        || '    Tools: qlik_list_bookmarks, qlik_create_bookmark, qlik_select_bookmark, qlik_delete_bookmark\n'
-        || '\n'
-        || '    Note: You can only delete bookmarks created using Qlik MCP tools.\n'
-        || '\n'
-        || '    ### 3. Business Glossary\n'
-        || '    Manage business terms, definitions, categories, and linkages to data assets.\n'
-        || '    Tools: qlik_create_glossary, qlik_get_full_glossary_export, qlik_get_glossary_categories,\n'
-        || '           qlik_create_glossary_category, qlik_search_glossary_terms, qlik_get_glossary_term,\n'
-        || '           qlik_create_glossary_term, qlik_update_glossary_term, qlik_delete_glossary_term,\n'
-        || '           qlik_update_term_status, qlik_get_glossary_term_links, qlik_create_glossary_term_links\n'
-        || '\n'
-        || '    Term statuses (case-sensitive): draft, verified, deprecated.\n'
-        || '    Only a steward can verify a term. Once verified, only a steward can modify it.\n'
-        || '\n'
-        || '    ### 4. Datasets & Data Quality\n'
-        || '    Inspect datasets, schemas, profiles, trust scores, and quality metrics.\n'
-        || '    Tools: qlik_get_dataset, qlik_get_dataset_schema, qlik_get_dataset_profile,\n'
-        || '           qlik_get_dataset_sample, qlik_get_dataset_freshness, qlik_get_dataset_trust_score,\n'
-        || '           qlik_get_dataset_memberships, qlik_update_dataset_metadata,\n'
-        || '           qlik_update_dataset_quality, qlik_get_dataset_quality_computation_status\n'
-        || '\n'
-        || '    ### 5. Data Exploration & Analysis\n'
-        || '    Query data, build calculations, explore field values.\n'
-        || '    Tools: qlik_create_data_object, qlik_get_field_values, qlik_search_field_values,\n'
-        || '           qlik_get_chart_data, qlik_get_chart_info\n'
-        || '\n'
-        || '    IMPORTANT RULES:\n'
-        || '    - Qlik performs ALL calculations. Never aggregate or compute on returned data.\n'
-        || '    - For different calculations, call the tool again with new expressions.\n'
-        || '    - Always apply filters/selections to limit data size.\n'
-        || '    - Always use qlik_get_field_values or qlik_search_field_values BEFORE applying\n'
-        || '      selections to verify values exist.\n'
-        || '    - For high cardinality fields, use qlik_search_field_values instead of qlik_get_field_values.\n'
-        || '    - For single analytical queries, prefer set analysis over app-level selections.\n'
-        || '\n'
-        || '    ### 6. Data Products\n'
-        || '    Create, manage, activate, and distribute curated data products.\n'
-        || '    Tools: qlik_create_data_product, qlik_get_data_product, qlik_get_data_product_documentation,\n'
-        || '           qlik_update_data_product, qlik_update_data_product_space,\n'
-        || '           qlik_update_activate_data_product, qlik_update_deactivate_data_product,\n'
-        || '           qlik_delete_data_product\n'
-        || '\n'
-        || '    ### 7. Knowledge Bases\n'
-        || '    Search knowledge bases and use their contents to get answers.\n'
-        || '    Tools: qlik_search_knowledgebase_chunks\n'
-        || '\n'
-        || '    ### 8. Lineage\n'
-        || '    Trace data origins and transformations. Call recursively for full chain.\n'
-        || '    Tools: qlik_get_lineage\n'
-        || '\n'
-        || '    ### 9. Master Items (Dimensions & Measures)\n'
-        || '    Manage reusable governed dimensions and measures.\n'
-        || '    Tools: qlik_list_dimensions, qlik_create_dimension, qlik_update_dimension,\n'
-        || '           qlik_delete_dimension, qlik_list_measures, qlik_create_measure,\n'
-        || '           qlik_update_measure, qlik_delete_measure\n'
-        || '\n'
-        || '    Note: You can only update/delete master items created using Qlik MCP tools.\n'
-        || '\n'
-        || '    ### 10. Selections & Filtering\n'
-        || '    Apply and manage filters that affect all visualizations.\n'
-        || '    Tools: qlik_select_values, qlik_clear_selections, qlik_get_current_selections\n'
-        || '\n'
-        || '    IMPORTANT RULES:\n'
-        || '    - Selections persist across all operations until cleared.\n'
-        || '    - Always verify values exist before selecting (use qlik_get_field_values or qlik_search_field_values).\n'
-        || '    - For single analytical queries, prefer set analysis in expressions over app-level selections.\n'
-        || '    - When to use selections: filtering the entire app for multiple subsequent operations.\n'
-        || '    - When to use set analysis: one-time filter for a specific calculation.\n'
-        || '\n'
-        || '    ### 11. Visualization & Sheets\n'
-        || '    Create dashboards and add charts, filters, KPIs.\n'
-        || '    Tools: qlik_create_sheet, qlik_add_chart, qlik_add_filter\n'
-        || '\n'
-        || '    Best practices:\n'
-        || '    - Test date/value existence with qlik_search_field_values first.\n'
-        || '    - Use set analysis over app-level selections for one-off queries.\n'
-        || '\n'
-        || '    ## General Best Practices\n'
-        || '    1. Always start by discovering available apps with qlik_search.\n'
-        || '    2. Verify field values exist before using them in selections or set analysis.\n'
-        || '    3. Let Qlik handle all calculations - never re-aggregate returned data.\n'
-        || '    4. Use selections for persistent cross-operation filters; use set analysis for one-off queries.\n'
-        || '    5. Clear selections when done to avoid affecting subsequent operations.\n'
-        || '    6. For lineage, call qlik_get_lineage recursively to build the full upstream chain.\n'
-        || '\n'
-        || '  orchestration: |\n'
-        || '    Use the Qlik MCP tools to answer questions about data, analytics, and visualizations.\n'
-        || '    Follow the best practices outlined in the response instructions.\n'
-        || '    When exploring data, always verify field values before applying selections.\n'
-        || 'mcp_servers:\n'
-        || '  - server_spec:\n'
-        || '      name: "' || v_agent_mcp_ref || '"\n';
-
-    sql_stmt := 'CREATE OR REPLACE AGENT ' || v_agent_fqn
-        || ' COMMENT = ''Qlik MCP agent for Snowflake Intelligence'''
-        || ' FROM SPECIFICATION $$ ' || spec || ' $$';
-    EXECUTE IMMEDIATE sql_stmt;
-
-    -- Set the agent display name for Snowflake Intelligence
-    sql_stmt := 'ALTER AGENT ' || v_agent_fqn || ' SET PROFILE = ''{"display_name": "' || v_agent_display_name || '"}''';
-    EXECUTE IMMEDIATE sql_stmt;
-
-    -- Add agent to Snowflake Intelligence
-    EXECUTE IMMEDIATE 'CREATE SNOWFLAKE INTELLIGENCE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT';
     EXECUTE IMMEDIATE 'ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT ADD AGENT ' || v_agent_fqn;
     EXECUTE IMMEDIATE 'GRANT USAGE ON SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT TO ROLE IDENTIFIER(''' || v_allowed_role || ''')';
 END;
-$body$;
+$$;
 
 -- =============================================================================
 -- Step 5: User Authentication (manual, per-user)
