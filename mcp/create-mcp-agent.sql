@@ -23,6 +23,23 @@
 --     (created in Qlik Management Console > OAuth)
 --   - The ALLOWED_ROLE must exist before running this script
 --
+-- Qlik OAuth App Requirements (Qlik Management Console > OAuth):
+--   The OAuth app on the Qlik Cloud tenant must be configured as follows:
+--
+--   - App type:            web
+--   - Allowed scopes:      user_default, mcp:execute, offline_access
+--                          (offline_access is REQUIRED for Snowflake to persist
+--                          refresh tokens; without it the OAuth flow appears to
+--                          succeed but the agent cannot discover MCP tools)
+--   - Redirect URI:        https://identity.snowflake.com/oauth2/callback
+--   - Auth method:         client_secret
+--   - Consent method:      required
+--   - Status:              approved
+--
+--   The CLIENT_ID and CLIENT_SECRET below must match this Qlik OAuth app.
+--   The OAUTH_ALLOWED_SCOPES in the Snowflake integration must be a subset
+--   of the scopes configured in the Qlik OAuth app.
+--
 -- Usage:
 --   1. Fill in the parameters below (TENANT, CLIENT_ID, CLIENT_SECRET, etc.)
 --   2. Run the entire script in a Snowflake worksheet or via SnowSQL
@@ -106,7 +123,7 @@ BEGIN
         || '   OAUTH_CLIENT_AUTH_METHOD = CLIENT_SECRET_POST'
         || '   OAUTH_AUTHORIZATION_ENDPOINT = ''https://' || v_tenant || '/oauth/authorize'''
         || '   OAUTH_REFRESH_TOKEN_VALIDITY = 86400'
-        || '   OAUTH_ALLOWED_SCOPES = (''user_default'', ''mcp:execute'')'
+        || '   OAUTH_ALLOWED_SCOPES = (''user_default'', ''mcp:execute'',''offline_access'')'
         || ' )'
         || ' ENABLED = TRUE'
         || ' COMMENT = ''API integration for Qlik MCP server with OAuth2 authentication''';
