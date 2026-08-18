@@ -138,3 +138,7 @@ SELECT SYSTEM$START_USER_OAUTH_FLOW('QLIK_MCP_INTEGRATION');
 | Consecutive-period patterns | ✅ LAG/LEAD | — | SQL window functions |
 | Hypothetical modeling | ✅ CASE/subqueries | — | What-if scenarios in SQL |
 | Bookmarks & selection states | — | ✅ | Save investigation context |
+
+## Try Qlik Cloud
+
+Want to build your own embedded analytics experience? [Start a free Qlik Cloud trial](https://www.qlik.com/us/trial/qlik-cloud-analytics) and pair it with your Snowflake account.

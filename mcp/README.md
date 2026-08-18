@@ -74,6 +74,10 @@ This returns a URL. Open it in a browser, authenticate with Qlik Cloud, and auth
 | `SYSTEM$FINISH_OAUTH_FLOW` fails with "Authorization code is not present" | Using the wrong function | Use `SYSTEM$START_USER_OAUTH_FLOW` (not `SYSTEM$START_OAUTH_FLOW`); the callback is handled automatically by the browser |
 | OAuth flow succeeds in Snowsight but not via CLI | Token is per-user; CLI may use a different user | Run `SYSTEM$START_USER_OAUTH_FLOW` from the CLI session and complete the flow for that user |
 
+## Try Qlik Cloud
+
+Don't have a Qlik Cloud tenant yet? [Start a free Qlik Cloud trial](https://www.qlik.com/us/trial/qlik-cloud-analytics) to get started with MCP integrations.
+
 ## License
 
 See [LICENSE](../LICENSE) for details.

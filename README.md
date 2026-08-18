@@ -69,6 +69,10 @@ Contributions from the Qlik Partner Engineering team are welcome. When adding a 
 
 See [LICENSE](LICENSE) for details.
 
+## Try Qlik Cloud
+
+Ready to explore these integrations with your own data? [Start a free Qlik Cloud trial](https://www.qlik.com/us/trial/qlik-cloud-analytics) and see how Qlik + Snowflake work together.
+
 ## Contact
 
 Maintained by the Qlik Partner Engineering team. For questions or issues, please open an issue in this repository.

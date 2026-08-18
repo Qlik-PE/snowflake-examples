@@ -47,3 +47,7 @@ CREATE APPLICATION my_app FROM APPLICATION PACKAGE my_app_pkg USING VERSION V1;
 - Consumer needs both USAGE on MCP server AND caller grants to the app
 - Use `REGISTER VERSION` (not `ADD VERSION`) when release channels are enabled
 - Use `ADD PATCH FOR VERSION` for updates, `ALTER APPLICATION ... UPGRADE` to apply
+
+## Try Qlik Cloud
+
+Need a Qlik Cloud tenant to build your connector? [Start a free Qlik Cloud trial](https://www.qlik.com/us/trial/qlik-cloud-analytics) and connect it to Snowflake in minutes.
