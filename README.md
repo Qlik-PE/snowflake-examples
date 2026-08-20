@@ -28,6 +28,7 @@ snowflake-examples/
 ### SQL Demos (`sql/`)
 
 - **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT, CLASSIFY, EMBED) using a sample product reviews dataset.
+- **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Inspects token and credit consumption by Cortex Agents, broken down by agent and LLM model.
 
 ### Native Apps (`native-apps/`)
 
