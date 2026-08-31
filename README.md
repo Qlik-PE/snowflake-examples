@@ -15,7 +15,6 @@ snowflake-examples/
 ├── native-apps/                # Native App Framework examples
 │   ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
 │   └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
-└── cortex_project/             # Cortex Project with SAP delivery semantic view + agent
 ```
 
 ## What's Included
@@ -38,10 +37,6 @@ snowflake-examples/
 
 - **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent that provides a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
 - **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server. Copy and customize.
-
-### Cortex Project (`cortex_project/`)
-
-- **[SAP_DELIVERY_ANALYTICS.sv.yaml](cortex_project/SAP_DELIVERY_ANALYTICS.sv.yaml)** — Semantic view and Cortex Agent for analyzing SAP on-time delivery performance, late delivery trends by region, shipping point, route, and customer.
 
 ## Prerequisites
 
