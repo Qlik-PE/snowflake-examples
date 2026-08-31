@@ -372,13 +372,10 @@ tools:
 tool_resources:
   SaaSMetrics:
     semantic_view: "core.saas_metrics_sv"
-    execution_environment:
-      type: warehouse
-      warehouse: "DEMO_WH"
 
-mcp_servers:
-  - server_spec:
-      name: "CORTEX_APP.PUBLIC.QLIK_MCP_SERVER"
+-- Note: The warehouse and MCP server are configured by the consumer via
+-- consumer_setup.sql, which alters the agent spec after installation.
+-- The consumer provides their own warehouse and Qlik MCP server FQN.
 $$;
 
 GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;

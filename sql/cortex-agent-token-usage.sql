@@ -28,8 +28,8 @@
 -- =============================================================================
 
 -- Adjust the time window (max 1 month recommended)
-SET START_TIME = '2026-07-21';
-SET END_TIME   = '2026-08-21';
+SET START_TIME = '<START_TIME>';  -- e.g. '2026-07-21'
+SET END_TIME   = '<END_TIME>';    -- e.g. '2026-08-21'
 
 WITH flattened AS (
     SELECT

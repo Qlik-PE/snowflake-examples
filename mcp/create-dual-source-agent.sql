@@ -41,7 +41,7 @@ SET AGENT_DISPLAY_NAME = 'TPCH_SF10';
 
 -- Qlik MCP configuration
 SET QLIK_MCP_SERVER_FQN = 'QLIK_MCP_DB.PUBLIC.qlik_mcp_server';  -- Fully qualified MCP server name
-SET QLIK_APP_ID         = '79120212-d27f-4b02-9af8-fe768b0fcd1a'; -- Qlik Cloud app ID to query
+SET QLIK_APP_ID         = '<your-qlik-app-id>';                    -- Qlik Cloud app ID to query
 
 -- Semantic View configuration
 SET SEMANTIC_VIEW_FQN   = 'CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10'; -- Fully qualified semantic view

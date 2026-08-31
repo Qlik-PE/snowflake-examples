@@ -12,9 +12,10 @@ This repository contains working examples that demonstrate Snowflake + Qlik inte
 snowflake-examples/
 ├── mcp/                        # MCP server integrations (Qlik Cloud ↔ Snowflake)
 ├── sql/                        # SQL scripts and demos
-└── native-apps/                # Native App Framework examples
-    ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
-    └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
+├── native-apps/                # Native App Framework examples
+│   ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
+│   └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
+└── cortex_project/             # Cortex Project with SAP delivery semantic view + agent
 ```
 
 ## What's Included
@@ -22,18 +23,25 @@ snowflake-examples/
 ### MCP Integrations (`mcp/`)
 
 - **[create-mcp-agent.sql](mcp/create-mcp-agent.sql)** — End-to-end SQL script to provision a Qlik Cloud MCP integration in Snowflake (API integration, external MCP server, Cortex Agent, Snowflake Intelligence registration).
+- **[create-dual-source-agent.sql](mcp/create-dual-source-agent.sql)** — Creates a dual-source comparison agent that queries both Qlik MCP and a Snowflake Semantic View, then returns a structured comparison (expression/SQL, tool calls, duration, token usage).
+- **[create-multi-mcp-agent.sql](mcp/create-multi-mcp-agent.sql)** — Creates a multi-MCP agent wired to two external MCP servers (e.g., Qlik + Salesforce/GitHub/Jira) with orchestration routing between tool namespaces.
 - **[coco-qlik-mcp-public-client-setup.md](mcp/coco-qlik-mcp-public-client-setup.md)** — Setup guide for connecting Cortex Code CLI to Qlik MCP using a public OAuth client with PKCE.
 - **[coco-desktop-qlik-mcp-public-client-setup-windows.md](mcp/coco-desktop-qlik-mcp-public-client-setup-windows.md)** — Same as above, tailored for Cortex Code Desktop on Windows.
 
 ### SQL Demos (`sql/`)
 
-- **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT, CLASSIFY, EMBED) using a sample product reviews dataset.
+- **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT_ANSWER) using a sample product reviews dataset.
+- **[cortex-search-rag.sql](sql/cortex-search-rag.sql)** — End-to-end Cortex Search + RAG pipeline: creates a knowledge base, builds a hybrid search service, and wires it to a Cortex Agent for retrieval-augmented generation.
 - **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Inspects token and credit consumption by Cortex Agents, broken down by agent and LLM model.
 
 ### Native Apps (`native-apps/`)
 
 - **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent that provides a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
 - **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server. Copy and customize.
+
+### Cortex Project (`cortex_project/`)
+
+- **[SAP_DELIVERY_ANALYTICS.sv.yaml](cortex_project/SAP_DELIVERY_ANALYTICS.sv.yaml)** — Semantic view and Cortex Agent for analyzing SAP on-time delivery performance, late delivery trends by region, shipping point, route, and customer.
 
 ## Prerequisites
 

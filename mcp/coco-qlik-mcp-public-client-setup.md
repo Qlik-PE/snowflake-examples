@@ -15,7 +15,7 @@ Reference for connecting Snowflake CoCo (Cortex Code CLI) to the Qlik MCP server
 
 ---
 
-## Step 2 — Create a public OAuth client in Qlik
+## Step 1 — Create a public OAuth client in Qlik
 
 Public clients (Native / SPA) don't hold a client secret — proof of possession is PKCE only. This avoids the confidential-client `client_secret` exchange entirely, and the `OAUTH-22 Invalid client_secret` failure mode that comes with it.
 
@@ -39,7 +39,7 @@ If a prior confidential (`Web`) client of the same name exists (e.g. `cortex-cod
 
 ---
 
-## Step 3 — Update CoCo's MCP config
+## Step 2 — Update CoCo's MCP config
 
 Edit `~/.snowflake/cortex/mcp.json`:
 

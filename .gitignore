@@ -1,1 +1,10 @@
 .cortex/
+.DS_Store
+*.swp
+*.log
+.env
+.env.*
+__pycache__/
+*.pyc
+.idea/
+.vscode/

@@ -50,6 +50,7 @@ GRANT CALLER USAGE ON EXTERNAL MCP SERVER IDENTIFIER($QLIK_MCP_SERVER)
 -- =============================================================================
 -- This alters the agent spec to add your Qlik MCP server as a tool source.
 -- After this, the agent can access Qlik Cloud tools alongside the Semantic View.
+-- IMPORTANT: Update the warehouse name in the spec below to match $WAREHOUSE above.
 -- =============================================================================
 
 ALTER AGENT IDENTIFIER($APP_NAME || '.CORE.ANALYTICS_AGENT')
@@ -75,19 +76,28 @@ instructions:
     - User asks about specific metrics: MRR, ARR, churn, retention, revenue
     - User wants data by segment, region, plan tier, time period
     - User needs ad-hoc analysis or custom aggregations
+    - User asks "what is..." or "how much..." type questions about the data
 
     **Use Qlik MCP tools when:**
     - User asks about existing dashboards or visualizations
     - User wants to create/modify charts or sheets
     - User asks to explore apps or find specific Qlik content
     - User wants governed master items (dimensions/measures)
+    - User asks "show me..." or "create a chart..." type requests
 
     **Use both when:**
     - User wants to analyze data AND visualize it
     - User asks a metric question and wants a dashboard created
+    - User needs to compare Snowflake data with Qlik dashboard findings
+
+    ## Response guidelines:
+    - Be concise and data-driven
+    - When presenting metrics, include the time period and any filters applied
+    - When creating Qlik visualizations, confirm the app ID with the user first
+    - Format numbers clearly (e.g., $45,000 MRR, 95.2% NRR)
 
   orchestration: |
-    Route questions about data metrics to SaaSMetrics.
+     Route questions about data metrics to SaaSMetrics.
     Route questions about dashboards and visualizations to Qlik MCP tools.
     For hybrid requests, query the data first, then create visualizations.
 
@@ -95,13 +105,14 @@ tools:
   - tool_spec:
       type: "cortex_analyst_text_to_sql"
       name: "SaaSMetrics"
-      description: "Query SaaS subscription metrics including MRR, ARR, churn rate, net revenue retention, expansion revenue, account details, usage patterns, and customer segments."
+      description: "Query SaaS subscription metrics including MRR, ARR, churn rate, net revenue retention, expansion revenue, account details, usage patterns, and customer segments from Snowflake."
 
 tool_resources:
   SaaSMetrics:
     semantic_view: "core.saas_metrics_sv"
     execution_environment:
       type: warehouse
+      warehouse: "CORTEX"
 $$;
 
 -- Note: The MCP server is added separately via ALTER AGENT ... ADD MCP SERVER
@@ -121,16 +132,13 @@ $$;
 -- =============================================================================
 
 -- Create the Intelligence object if it doesn't exist
-CREATE DATABASE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE;
-CREATE SCHEMA IF NOT EXISTS SNOWFLAKE_INTELLIGENCE.AGENTS;
+CREATE SNOWFLAKE INTELLIGENCE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
 
 -- Register the agent (may require specific syntax depending on account setup)
 -- The agent will appear in Snowflake Intelligence automatically if it has a profile.
 
 ALTER AGENT IDENTIFIER($APP_NAME || '.CORE.ANALYTICS_AGENT')
-    SET PROFILE = (
-        DISPLAY_NAME = 'SaaS Analytics Kit (Qlik + Snowflake)'
-    );
+    SET PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';
 
 -- =============================================================================
 -- Step 4: Grant Access to User Roles

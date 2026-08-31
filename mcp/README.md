@@ -8,6 +8,7 @@ Guides and scripts for connecting Snowflake to [Qlik Cloud](https://www.qlik.com
 |------|-------------|
 | [create-mcp-agent.sql](create-mcp-agent.sql) | End-to-end SQL script that provisions a Qlik Cloud MCP integration in Snowflake — creates an OAuth2 API integration, an external MCP server, a Cortex Agent wired to that server, and registers it with Snowflake Intelligence. |
 | [create-dual-source-agent.sql](create-dual-source-agent.sql) | Creates a **dual-source comparison agent** that executes every question against both Qlik MCP and a Snowflake Semantic View, then returns a structured comparison (expression/SQL, tool calls, duration, token usage). |
+| [create-multi-mcp-agent.sql](create-multi-mcp-agent.sql) | Creates a **multi-MCP agent** wired to two external MCP servers (e.g., Qlik + Salesforce/GitHub/Jira) with orchestration routing between tool namespaces. Includes appendix for adding a Semantic View as a third tool. |
 | [coco-qlik-mcp-public-client-setup.md](coco-qlik-mcp-public-client-setup.md) | Setup guide for connecting **Cortex Code CLI** to the Qlik MCP server using a public OAuth client (Authorization Code + PKCE, no client secret). |
 | [coco-desktop-qlik-mcp-public-client-setup-windows.md](coco-desktop-qlik-mcp-public-client-setup-windows.md) | Same as above, tailored for **Cortex Code Desktop** (VS Code-based IDE) on Windows. |
 
@@ -17,6 +18,7 @@ Guides and scripts for connecting Snowflake to [Qlik Cloud](https://www.qlik.com
 - A Qlik Cloud tenant with MCP activated by a tenant admin.
 - For `create-mcp-agent.sql`: ACCOUNTADMIN (or equivalent privileges) and OAuth client credentials from Qlik.
 - For `create-dual-source-agent.sql`: an existing MCP server (from `create-mcp-agent.sql`) and a Semantic View.
+- For `create-multi-mcp-agent.sql`: two existing External MCP Servers with OAuth authentication completed for both.
 - For the CoCo/Desktop guides: your user role must have **Qlik MCP → Allowed** under Qlik's *Features and actions → Agentic AI*.
 
 ## Qlik OAuth App Setup (Step-by-Step)
@@ -100,7 +102,7 @@ SET TARGET_SCHEMA      = 'PUBLIC';
 SET AGENT_NAME         = 'TPCH_SF10';
 SET AGENT_DISPLAY_NAME = 'TPCH_SF10';
 SET QLIK_MCP_SERVER_FQN = 'QLIK_MCP_DB.PUBLIC.qlik_mcp_server';
-SET QLIK_APP_ID         = '79120212-d27f-4b02-9af8-fe768b0fcd1a';
+SET QLIK_APP_ID         = '<your-qlik-app-id>';
 SET SEMANTIC_VIEW_FQN   = 'CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10';
 SET ANALYST_WAREHOUSE   = 'COMPUTE';
 ```

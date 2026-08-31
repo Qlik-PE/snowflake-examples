@@ -30,7 +30,7 @@
 -- =============================================================================
 
 SET MODEL = 'llama3.1-8b';  -- LLM model for COMPLETE (see docs for options)
-SET WAREHOUSE = 'COMPUTE_WH';  -- Warehouse to use
+SET WAREHOUSE = 'COMPUTE_WH';  -- Replace with your warehouse name
 
 USE WAREHOUSE IDENTIFIER($WAREHOUSE);
 
@@ -76,13 +76,16 @@ SELECT
     review_id,
     product,
     rating,
-    SNOWFLAKE.CORTEX.SENTIMENT(review_text) AS sentiment_score,
+    sentiment_score,
     CASE
-        WHEN SNOWFLAKE.CORTEX.SENTIMENT(review_text) > 0.3 THEN 'Positive'
-        WHEN SNOWFLAKE.CORTEX.SENTIMENT(review_text) < -0.3 THEN 'Negative'
+        WHEN sentiment_score > 0.3 THEN 'Positive'
+        WHEN sentiment_score < -0.3 THEN 'Negative'
         ELSE 'Neutral'
     END AS sentiment_label
-FROM product_reviews
+FROM (
+    SELECT *, SNOWFLAKE.CORTEX.SENTIMENT(review_text) AS sentiment_score
+    FROM product_reviews
+)
 ORDER BY sentiment_score DESC;
 
 -- =============================================================================

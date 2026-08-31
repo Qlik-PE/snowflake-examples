@@ -22,7 +22,7 @@ A Cortex Agent that provides a unified AI analytics experience over both Snowfla
 │                                 │                                   │
 │  ┌───────────────────────┐      │  ┌────────────────────────────┐  │
 │  │ Semantic View          │      │  │ Qlik Cloud App             │  │
-│  │ CORTEX_APP.PUBLIC.     │      │  │ dd64adae-c4db-46a7-...     │  │
+│  │ CORTEX_APP.PUBLIC.     │      │  │ <your-qlik-app-id>         │  │
 │  │ SAAS_METRICS_SV        │      │  │                            │  │
 │  │                        │      │  │  • App discovery           │  │
 │  │ Tables:                │      │  │  • Sheet/chart creation    │  │
@@ -42,7 +42,7 @@ A Cortex Agent that provides a unified AI analytics experience over both Snowfla
 | Semantic View | `CORTEX_APP.PUBLIC.SAAS_METRICS_SV` | Cortex Analyst text-to-SQL |
 | MCP Server | `CORTEX_APP.PUBLIC.QLIK_MCP_SERVER` | Qlik Cloud connection |
 | Tables | `CORTEX_APP.PUBLIC.{ACCOUNTS,SUBSCRIPTIONS,MONTHLY_REVENUE,USAGE_EVENTS}` | SaaS metrics data |
-| Qlik App | `dd64adae-c4db-46a7-857f-bc19dfe249a8` | 4 sheets with dashboards |
+| Qlik App | `<your-qlik-app-id>` | 4 sheets with dashboards |
 
 ## Data Model
 
@@ -124,7 +124,6 @@ SELECT SYSTEM$START_USER_OAUTH_FLOW('QLIK_MCP_INTEGRATION');
 | `scripts/authenticate_qlik.sql` | OAuth flow for Qlik MCP |
 | `scripts/test_agent.sql` | Verification queries |
 | `scripts/sample-questions.md` | 15 complex analytical questions |
-| `scripts/questions-by-source.md` | Questions unique to each platform |
 
 ## Why Both Platforms?
 

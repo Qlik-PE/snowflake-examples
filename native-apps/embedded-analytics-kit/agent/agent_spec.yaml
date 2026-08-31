@@ -62,7 +62,5 @@ tool_resources:
   SaaSMetrics:
     semantic_view: "core.saas_metrics_sv"
 
-# Added by consumer_setup.sql after consumer provides their Qlik MCP server:
-mcp_servers:
-  - server_spec:
-      name: "<CONSUMER_DB>.<CONSUMER_SCHEMA>.<QLIK_MCP_SERVER_NAME>"
+# Note: execution_environment (warehouse) and mcp_servers are configured by
+# the consumer via consumer_setup.sql after installation.

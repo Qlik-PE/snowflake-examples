@@ -1,0 +1,316 @@
+name: SAP_DELIVERY_ANALYTICS
+description: SAP delivery analytics model for analyzing on-time delivery performance,
+  late delivery trends by region, shipping point, route, and customer. Covers delivery
+  headers, line items, and customer master data from the SAP Order-to-Cash data mart.
+  Data is current through August 2026.
+tables:
+- name: CUSTOMER_MASTER
+  base_table:
+    database: CORTEX_DEMOS
+    schema: PUBLIC
+    table: '"Customer_Master"'
+  primary_key:
+    columns:
+    - HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+  dimensions:
+  - name: COUNTRYCODE__LAND1
+    expr: '"COUNTRYCODE__LAND1"'
+    data_type: VARCHAR(3)
+  - name: CUSTOMER_ACCOUNT_GROUP__KTOKD
+    expr: '"CUSTOMER ACCOUNT GROUP__KTOKD"'
+    data_type: VARCHAR(4)
+  - name: CUSTOMER_CLASSIFICATION__KUKLA
+    expr: '"CUSTOMER_CLASSIFICATION__KUKLA"'
+    data_type: VARCHAR(2)
+  - name: CUSTOMER__KUNNR
+    expr: '"CUSTOMER__KUNNR"'
+    data_type: VARCHAR(10)
+  - name: HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+    expr: '"hdr__Customer_Master_-_0CUSTOMER_ATTR_key_id"'
+    data_type: NUMBER(29,0)
+  - name: LOC_01_INTERFACE__ORT01
+    expr: '"LOC_01_INTERFACE__ORT01"'
+    data_type: VARCHAR(35)
+  - name: NAME_1__NAME1
+    expr: '"NAME_1__NAME1"'
+    data_type: VARCHAR(35)
+  - name: NAME_2__NAME2
+    expr: '"NAME_2__NAME2"'
+    data_type: VARCHAR(35)
+  - name: POSTAL_CODE_INTERFACE__PSTLZ
+    expr: '"POSTAL_CODE_INTERFACE__PSTLZ"'
+    data_type: VARCHAR(10)
+  - name: REGION__REGIO
+    expr: '"REGION__REGIO"'
+    data_type: VARCHAR(3)
+  - name: VNDR_MSTR_IND_KEY__BRSCH
+    expr: '"VNDR_MSTR_IND_KEY__BRSCH"'
+    data_type: VARCHAR(4)
+- name: SALES_DELIVERY_HEADER
+  base_table:
+    database: CORTEX_DEMOS
+    schema: PUBLIC
+    table: '"Sales_Delivery_Header"'
+  primary_key:
+    columns:
+    - HDR__SALES_DELIVERY_HEADER___2LIS_12_VCHDR_KEY_ID
+  dimensions:
+  - name: COMPANY_CODE__BUKRS
+    expr: '"COMPANY_CODE__BUKRS"'
+    data_type: VARCHAR(4)
+  - name: COUNTRYCODE__LAND1
+    expr: '"COUNTRYCODE__LAND1"'
+    data_type: VARCHAR(3)
+  - name: CUSTOMER_CLASSIFICATION__KUKLA
+    expr: '"CUSTOMER_CLASSIFICATION__KUKLA"'
+    data_type: VARCHAR(2)
+  - name: CUSTOMER_GROUP__KDGRP
+    expr: '"CUSTOMER_GROUP__KDGRP"'
+    data_type: VARCHAR(2)
+  - name: DELIVERY_BLOCK__LIFSK
+    expr: '"DELIVERY_BLOCK__LIFSK"'
+    data_type: VARCHAR(2)
+  - name: DLVYTYPE_RELOCATION__LFART
+    expr: '"DLVYTYPE_RELOCATION__LFART"'
+    data_type: VARCHAR(4)
+  - name: GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    expr: '"GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF"'
+    data_type: NUMBER(9,0)
+  - name: HDR__SALES_DELIVERY_HEADER___2LIS_12_VCHDR_KEY_ID
+    expr: '"hdr__Sales_Delivery_Header_-_2LIS_12_VCHDR_key_id"'
+    data_type: NUMBER(29,0)
+  - name: LOADING_POINT__LSTEL
+    expr: '"LOADING_POINT__LSTEL"'
+    data_type: VARCHAR(2)
+  - name: LOC_01_INTERFACE__ORT01
+    expr: '"LOC_01_INTERFACE__ORT01"'
+    data_type: VARCHAR(35)
+  - name: NAME_1__NAME1
+    expr: '"NAME_1__NAME1"'
+    data_type: VARCHAR(35)
+  - name: NUMBER_OF_PACKAGES__MCBW_ANZPK
+    expr: '"NUMBER_OF_PACKAGES__MCBW_ANZPK"'
+    data_type: NUMBER(9,0)
+  - name: POSTAL_CODE_INTERFACE__PSTLZ
+    expr: '"POSTAL_CODE_INTERFACE__PSTLZ"'
+    data_type: VARCHAR(10)
+  - name: REGION__REGIO
+    expr: '"REGION__REGIO"'
+    data_type: VARCHAR(3)
+  - name: ROUTE_ID__ROUTE
+    expr: '"ROUTE_ID__ROUTE"'
+    data_type: VARCHAR(6)
+  - name: SALES_DISTRICT__BZIRK
+    expr: '"SALES_DISTRICT__BZIRK"'
+    data_type: VARCHAR(6)
+  - name: SALES_DOCUMENT__VBELN
+    expr: '"SALES_DOCUMENT__VBELN"'
+    data_type: VARCHAR(10)
+  - name: SALES_ORG___VKORG
+    expr: '"SALES_ORG___VKORG"'
+    data_type: VARCHAR(4)
+  - name: SHIPPING_POINT__VSTEL
+    expr: '"SHIPPING_POINT__VSTEL"'
+    data_type: VARCHAR(4)
+  - name: SHIP_TO_CUSTOMER__KUNNR
+    expr: '"SHIP_TO_CUSTOMER__KUNNR"'
+    data_type: VARCHAR(10)
+  - name: SOLD_TO_PARTY__KUNAG
+    expr: '"SOLD_TO_PARTY__KUNAG"'
+    data_type: VARCHAR(10)
+  facts:
+  - name: NET_WEIGHT__NTGEW
+    expr: '"NET_WEIGHT__NTGEW"'
+    data_type: NUMBER(15,3)
+    access_modifier: public_access
+  - name: TOTAL_WEIGHT__BTGEW
+    expr: '"TOTAL_WEIGHT__BTGEW"'
+    data_type: NUMBER(15,3)
+    access_modifier: public_access
+  time_dimensions:
+  - name: ACT_GDS_MVMNT_DATE__WADAT_IST
+    expr: '"ACT_GDS_MVMNT_DATE__WADAT_IST"'
+    data_type: DATE
+  - name: CREATED_ON__ERDAT
+    expr: '"CREATED_ON__ERDAT"'
+    data_type: DATE
+  - name: DELIVERY_DATE__LFDAT
+    expr: '"DELIVERY_DATE__LFDAT"'
+    data_type: DATE
+  - name: GOODS_ISSUE_DATE__WADAT
+    expr: '"GOODS_ISSUE_DATE__WADAT"'
+    data_type: DATE
+- name: SALES_DELIVERY_LINE_ITEMS
+  base_table:
+    database: CORTEX_DEMOS
+    schema: PUBLIC
+    table: '"Sales_Delivery_Line_Items"'
+  dimensions:
+  - name: COMPANY_CODE__BUKRS
+    expr: '"COMPANY_CODE__BUKRS"'
+    data_type: VARCHAR(4)
+  - name: GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    expr: '"GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF"'
+    data_type: NUMBER(9,0)
+  - name: GOODS_MOVEMENT_STAT__WBSTA
+    expr: '"GOODS_MOVEMENT_STAT__WBSTA"'
+    data_type: VARCHAR(1)
+  - name: HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+    expr: '"hdr__Customer_Master_-_0CUSTOMER_ATTR_key_id"'
+    data_type: NUMBER(38,0)
+  - name: HDR__SALES_DELIVERY_HEADER___2LIS_12_VCHDR_KEY_ID
+    expr: '"hdr__Sales_Delivery_Header_-_2LIS_12_VCHDR_key_id"'
+    data_type: NUMBER(38,0)
+  - name: ITEM_CATEGORY__PSTYV
+    expr: '"ITEM_CATEGORY__PSTYV"'
+    data_type: VARCHAR(4)
+  - name: MATERIAL_GROUP__MATKL
+    expr: '"MATERIAL_GROUP__MATKL"'
+    data_type: VARCHAR(9)
+  - name: MATL_HIERARCHY_SEARCH__MATNR
+    expr: '"MATL_HIERARCHY_SEARCH__MATNR"'
+    data_type: VARCHAR(18)
+  - name: PLANT__WERKS
+    expr: '"PLANT__WERKS"'
+    data_type: VARCHAR(4)
+  - name: ROUTE_ID__ROUTE
+    expr: '"ROUTE_ID__ROUTE"'
+    data_type: VARCHAR(6)
+  - name: SALES_DISTRICT__BZIRK
+    expr: '"SALES_DISTRICT__BZIRK"'
+    data_type: VARCHAR(6)
+  - name: SALES_DOCUMENT__VBELN
+    expr: '"SALES_DOCUMENT__VBELN"'
+    data_type: VARCHAR(10)
+  - name: SALES_DOC_ITEM_POSNR
+    expr: '"SALES_DOC_ITEM_POSNR"'
+    data_type: VARCHAR(6)
+  - name: SALES_ORG___VKORG
+    expr: '"SALES_ORG___VKORG"'
+    data_type: VARCHAR(4)
+  - name: SHIPPING_POINT__VSTEL
+    expr: '"SHIPPING_POINT__VSTEL"'
+    data_type: VARCHAR(4)
+  - name: SHIP_TO_CUSTOMER__KUNNR
+    expr: '"SHIP_TO_CUSTOMER__KUNNR"'
+    data_type: VARCHAR(10)
+  - name: SOLD_TO_CUSTOMER__KUNAG
+    expr: '"SOLD_TO_CUSTOMER__KUNAG"'
+    data_type: VARCHAR(10)
+  facts:
+  - name: ACTUAL_QTY_DELIVERED__LFIMG
+    expr: '"ACTUAL_QTY_DELIVERED__LFIMG"'
+    data_type: NUMBER(13,3)
+    access_modifier: public_access
+  - name: GROSS_WEIGHT__BRGEW
+    expr: '"GROSS_WEIGHT__BRGEW"'
+    data_type: NUMBER(15,3)
+    access_modifier: public_access
+  - name: NET_WEIGHT__NTGEW
+    expr: '"NET_WEIGHT__NTGEW"'
+    data_type: NUMBER(15,3)
+    access_modifier: public_access
+  time_dimensions:
+  - name: ACT_GDS_MVMNT_DATE__WADAT_IST
+    expr: '"ACT_GDS_MVMNT_DATE__WADAT_IST"'
+    data_type: DATE
+  - name: CREATED_ON__ERDAT
+    expr: '"CREATED_ON__ERDAT"'
+    data_type: DATE
+  - name: DELIVERY_DATE__LFDAT
+    expr: '"DELIVERY_DATE__LFDAT"'
+    data_type: DATE
+  - name: GOODS_ISSUE_DATE__WADAT
+    expr: '"GOODS_ISSUE_DATE__WADAT"'
+    data_type: DATE
+relationships:
+- name: SALES_DELIVERY_LINE_ITEMS_TO_CUSTOMER_MASTER
+  left_table: SALES_DELIVERY_LINE_ITEMS
+  right_table: CUSTOMER_MASTER
+  relationship_columns:
+  - left_column: HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+    right_column: HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+  relationship_type: many_to_one
+  join_type: inner
+- name: SALES_DELIVERY_LINE_ITEMS_TO_SALES_DELIVERY_HEADER
+  left_table: SALES_DELIVERY_LINE_ITEMS
+  right_table: SALES_DELIVERY_HEADER
+  relationship_columns:
+  - left_column: HDR__SALES_DELIVERY_HEADER___2LIS_12_VCHDR_KEY_ID
+    right_column: HDR__SALES_DELIVERY_HEADER___2LIS_12_VCHDR_KEY_ID
+  relationship_type: many_to_one
+  join_type: inner
+verified_queries:
+- name: late_deliveries_by_region
+  sql: SELECT REGION__REGIO, COUNT(*) AS late_deliveries, AVG(GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF)
+    AS avg_delay_days FROM sales_delivery_header WHERE GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 GROUP BY REGION__REGIO ORDER BY late_deliveries DESC
+  question: Which regions have the most late deliveries and what is their average
+    delay?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: monthly_late_delivery_rate_trend
+  sql: SELECT DATE_TRUNC('MONTH', DELIVERY_DATE__LFDAT) AS delivery_month, COUNT(*)
+    AS total_deliveries, SUM(CASE WHEN GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF > 0
+    THEN 1 ELSE 0 END) AS late_deliveries, ROUND(100.0 * SUM(CASE WHEN GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 THEN 1 ELSE 0 END) / COUNT(*), 2) AS late_delivery_pct FROM sales_delivery_header
+    GROUP BY delivery_month ORDER BY delivery_month
+  question: What is the monthly trend of late delivery rate?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: late_deliveries_by_shipping_point_and_region
+  sql: SELECT SHIPPING_POINT__VSTEL, REGION__REGIO, COUNT(*) AS late_count, AVG(GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF)
+    AS avg_delay FROM sales_delivery_header WHERE GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 GROUP BY SHIPPING_POINT__VSTEL, REGION__REGIO ORDER BY late_count DESC
+  question: Which shipping points and regions have the highest number of late deliveries
+    and what is their average delay?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: worst_delay_routes
+  sql: SELECT ROUTE_ID__ROUTE, COUNT(*) AS deliveries, AVG(GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF)
+    AS avg_delay_days FROM sales_delivery_header WHERE GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 GROUP BY ROUTE_ID__ROUTE ORDER BY avg_delay_days DESC LIMIT 20
+  question: Which delivery routes have the worst average delay?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: monthly_late_deliveries_by_region
+  sql: SELECT REGION__REGIO, DATE_TRUNC('MONTH', DELIVERY_DATE__LFDAT) AS delivery_month,
+    COUNT(*) AS late_deliveries, AVG(GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF) AS avg_delay
+    FROM sales_delivery_header WHERE GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF > 0 GROUP
+    BY REGION__REGIO, delivery_month ORDER BY REGION__REGIO, delivery_month
+  question: What are the monthly trends for late deliveries and average delay by region?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: late_deliveries_by_material_group
+  sql: SELECT li.MATERIAL_GROUP__MATKL, COUNT(*) AS late_items, AVG(li.GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF)
+    AS avg_delay FROM sales_delivery_line_items AS li WHERE li.GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 GROUP BY li.MATERIAL_GROUP__MATKL ORDER BY late_items DESC LIMIT 15
+  question: Which material groups have the highest number of late deliveries and what
+    is their average delay?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: customers_most_affected_by_late_deliveries
+  sql: SELECT c.NAME_1__NAME1 AS customer_name, c.REGION__REGIO, COUNT(*) AS late_deliveries
+    FROM sales_delivery_line_items AS li JOIN customer_master AS c ON li.HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID
+    = c.HDR__CUSTOMER_MASTER___0CUSTOMER_ATTR_KEY_ID WHERE li.GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF
+    > 0 GROUP BY c.NAME_1__NAME1, c.REGION__REGIO ORDER BY late_deliveries DESC LIMIT
+    10
+  question: Which customers are most affected by late deliveries?
+  verified_at: 1786650267
+  verified_by: Semantic Model Generator
+  use_as_onboarding_question: false
+- name: customers_highest_share_late_deliveries
+  question: Which customers or customer groups experienced the highest share of late
+    deliveries?
+  sql: SELECT h."CUSTOMER_GROUP__KDGRP" AS customer_group, h."NAME_1__NAME1" AS customer_name,
+    COUNT(*) AS total_deliveries, SUM(CASE WHEN h."GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF"
+    > 0 THEN 1 ELSE 0 END) AS late_deliveries, ROUND(100.0 * SUM(CASE WHEN h."GOODS_ISSUE_DELAY_IN_DAYS__WA_DELAY_LF"
+    > 0 THEN 1 ELSE 0 END) / COUNT(*), 2) AS late_delivery_pct FROM CORTEX_DEMOS.PUBLIC."Sales_Delivery_Header"
+    h GROUP BY h."CUSTOMER_GROUP__KDGRP", h."NAME_1__NAME1" HAVING COUNT(*) >= 5 ORDER
+    BY late_delivery_pct DESC LIMIT 20
