@@ -9,6 +9,7 @@ Guides and scripts for connecting Snowflake to [Qlik Cloud](https://www.qlik.com
 | [create-mcp-agent.sql](create-mcp-agent.sql) | End-to-end SQL script that provisions a Qlik Cloud MCP integration in Snowflake — creates an OAuth2 API integration, an external MCP server, a Cortex Agent wired to that server, and registers it with Snowflake Intelligence. |
 | [create-dual-source-agent.sql](create-dual-source-agent.sql) | Creates a **dual-source comparison agent** that executes every question against both Qlik MCP and a Snowflake Semantic View, then returns a structured comparison (expression/SQL, tool calls, duration, token usage). |
 | [create-multi-mcp-agent.sql](create-multi-mcp-agent.sql) | Creates a **multi-MCP agent** wired to two external MCP servers (e.g., Qlik + Salesforce/GitHub/Jira) with orchestration routing between tool namespaces. Includes appendix for adding a Semantic View as a third tool. |
+| [create-mcp-first-fallback-agent.sql](create-mcp-first-fallback-agent.sql) | Creates an **MCP-first agent with Semantic View fallback** — every question is routed to Qlik MCP first; the agent falls back to a Snowflake Semantic View (Cortex Analyst) only when Qlik cannot answer (auth error, missing data, tool failure). |
 | [coco-qlik-mcp-public-client-setup.md](coco-qlik-mcp-public-client-setup.md) | Setup guide for connecting **Cortex Code CLI** to the Qlik MCP server using a public OAuth client (Authorization Code + PKCE, no client secret). |
 | [coco-desktop-qlik-mcp-public-client-setup-windows.md](coco-desktop-qlik-mcp-public-client-setup-windows.md) | Same as above, tailored for **Cortex Code Desktop** (VS Code-based IDE) on Windows. |
 
@@ -19,6 +20,7 @@ Guides and scripts for connecting Snowflake to [Qlik Cloud](https://www.qlik.com
 - For `create-mcp-agent.sql`: ACCOUNTADMIN (or equivalent privileges) and OAuth client credentials from Qlik.
 - For `create-dual-source-agent.sql`: an existing MCP server (from `create-mcp-agent.sql`) and a Semantic View.
 - For `create-multi-mcp-agent.sql`: two existing External MCP Servers with OAuth authentication completed for both.
+- For `create-mcp-first-fallback-agent.sql`: an existing MCP server (from `create-mcp-agent.sql`) and a Semantic View.
 - For the CoCo/Desktop guides: your user role must have **Qlik MCP → Allowed** under Qlik's *Features and actions → Agentic AI*.
 
 ## Qlik OAuth App Setup (Step-by-Step)
@@ -77,6 +79,66 @@ This returns a URL. Open it in a browser, authenticate with Qlik Cloud, and auth
 | Server error during OAuth redirect | Wrong client secret, or Qlik tenant is unreachable | Verify the client secret matches, check tenant availability |
 | `SYSTEM$FINISH_OAUTH_FLOW` fails with "Authorization code is not present" | Using the wrong function | Use `SYSTEM$START_USER_OAUTH_FLOW` (not `SYSTEM$START_OAUTH_FLOW`); the callback is handled automatically by the browser |
 | OAuth flow succeeds in Snowsight but not via CLI | Token is per-user; CLI may use a different user | Run `SYSTEM$START_USER_OAUTH_FLOW` from the CLI session and complete the flow for that user |
+
+## MCP-First Agent with Semantic View Fallback
+
+The `create-mcp-first-fallback-agent.sql` script creates a Cortex Agent that uses Qlik MCP as its **primary** tool and falls back to a Snowflake Semantic View only when Qlik cannot answer.
+
+### How it works
+
+```
+User Question
+     │
+     ▼
+┌─────────────┐   success   ┌──────────────┐
+│  Qlik MCP   │────────────▶│ Return answer│
+│  (primary)  │             │ (Source: Qlik)│
+└──────┬──────┘             └──────────────┘
+       │ error / auth required /
+       │ out of scope
+       ▼
+┌─────────────┐   success   ┌──────────────────┐
+│  Semantic   │────────────▶│ Return answer    │
+│  View       │             │ (Source: fallback)│
+│  (fallback) │             └──────────────────┘
+└─────────────┘
+```
+
+The agent:
+1. Routes every question to Qlik MCP first (scoped to a specific app ID).
+2. Falls back to Cortex Analyst (Semantic View) only when Qlik MCP fails — authentication error, tool failure, missing fields, or empty results.
+3. Never queries both sources for the same question (unlike the dual-source comparison agent).
+4. Attributes every answer to the source that produced it.
+
+### Parameters
+
+Edit these at the top of the script:
+
+```sql
+SET TARGET_DATABASE     = 'CORTEX_DEMOS';
+SET TARGET_SCHEMA       = 'PUBLIC';
+SET AGENT_NAME          = 'MCP_FIRST_AGENT';
+SET AGENT_DISPLAY_NAME  = 'MCP-First Analytics Agent';
+SET QLIK_MCP_SERVER_FQN = 'QLIK_MCP_DB.PUBLIC.qlik_mcp_server';
+SET QLIK_APP_ID         = '<your-qlik-app-id>';
+SET SEMANTIC_VIEW_FQN   = 'CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10';
+SET ANALYST_WAREHOUSE   = 'COMPUTE';
+```
+
+### Prerequisites
+
+1. Run `create-mcp-agent.sql` first to create the MCP server and API integration.
+2. Create a Semantic View over your target data (the script references an existing one).
+3. Complete OAuth authentication for Qlik MCP:
+   ```sql
+   SELECT SYSTEM$START_USER_OAUTH_FLOW('<INTEGRATION_NAME>');
+   ```
+
+### When to use this pattern
+
+- You want Qlik Cloud as the **single source of truth** for governed metrics, with Snowflake as a safety net.
+- Your Qlik app covers most questions but some edge cases require direct SQL against Snowflake tables.
+- You need a resilient agent that keeps working even when Qlik OAuth has expired or the MCP server is temporarily unreachable.
 
 ## Dual-Source Comparison Agent
 
