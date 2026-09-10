@@ -53,7 +53,7 @@ Two outcomes drive the whole DDL shape:
 | Source shape | Example | Table definition strategy |
 |---|---|---|
 | **Quoted-case** (lower/mixed) | `SUMMIT."silver_layer2"."customers"`, column `"CustomerID"` | `base_table.definition` subquery aliasing **every** column to unquoted uppercase |
-| **Default-case** (already upper) | `SNOWFLAKE_SAMPLE_DATA.TPCH_SF10.CUSTOMER`, column `C_CUSTKEY` | Reference the table directly |
+| **Default-case** (already upper) | `ANALYTICS_DB.PUBLIC.CUSTOMER`, column `C_CUSTKEY` | Reference the table directly |
 
 Qlik Agentic Pipeline / onboarding layers almost always produce **quoted-case** output — assume quoted until proven otherwise.
 
