@@ -15,6 +15,7 @@ snowflake-examples/
 ├── native-apps/                # Native App Framework examples
 │   ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
 │   └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
+├── skills/                     # Cortex Code skills for Qlik ↔ Snowflake workflows
 ```
 
 ## What's Included
@@ -32,6 +33,10 @@ snowflake-examples/
 - **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT_ANSWER) using a sample product reviews dataset.
 - **[cortex-search-rag.sql](sql/cortex-search-rag.sql)** — End-to-end Cortex Search + RAG pipeline: creates a knowledge base, builds a hybrid search service, and wires it to a Cortex Agent for retrieval-augmented generation.
 - **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Inspects token and credit consumption by Cortex Agents, broken down by agent and LLM model.
+
+### Skills (`skills/`)
+
+- **[qlik-dp-to-semantic-view.md](skills/qlik-dp-to-semantic-view.md)** — Cortex Code skill that converts a Qlik Talend Cloud Data Product into a Snowflake Semantic View, preserving governed metadata (descriptions, glossary definitions, trust scores) as first-class semantic metadata. Covers the full workflow: harvesting DP metadata via MCP, handling quoted-case identifiers, classifying fields, deriving metrics from glossary terms, building relationships, assembling DDL, and validating the result with Cortex Analyst.
 
 ### Native Apps (`native-apps/`)
 
