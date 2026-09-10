@@ -109,10 +109,6 @@ Worked example from the TPC-H glossary:
 | Discounted Revenue | `SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` | `LINEITEM.DISCOUNTED_REVENUE as SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` |
 | Order Total Price | `ORDERS.O_TOTALPRICE` aggregated | `ORDERS.TOTAL_ORDER_PRICE as SUM(O_TOTALPRICE)` |
 | Quantity | `SUM(L_QUANTITY)` | `LINEITEM.TOTAL_QUANTITY as SUM(L_QUANTITY)` |
-
-> **Known defect to avoid:**
-> `CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10` defines `TOTAL_REVENUE as SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` — that is the glossary's *Discounted Revenue*, published under the name *Revenue*, and gross Revenue is missing entirely. Naming a metric after one glossary term while implementing another silently misleads every Cortex Analyst answer built on it.
-
 When there is **no glossary**, add a conservative baseline per table — a count on each entity plus the obvious additive sums — and derive revenue from line-item columns:
 
 ```
