@@ -4,7 +4,7 @@ Snowflake Failure Root-Cause Investigator
 Prototype demonstrating the Cortex Code Agent SDK for the
 "Reload / CDC failure root-cause" use case.
 
-Simulates a Qlik Automate webhook trigger: when a reload or
+Simulates a Qlik webhook trigger: when a reload or
 Replicate task fails, a CoCo agent session investigates the
 Snowflake side (QUERY_HISTORY, WAREHOUSE_EVENTS, etc.) and
 returns a structured JSON report with root cause + remediation.

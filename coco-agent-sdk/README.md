@@ -42,7 +42,7 @@ triage arrives solved instead of started."*
 #### How it works
 
 ```
-Qlik Automate (webhook)
+Qlik (webhook / event)
         │
         ▼
 ┌──────────────────────┐
@@ -60,7 +60,7 @@ Qlik Automate (webhook)
 └──────────────────────┘
         │
         ▼
-  Qlik REST API / Automate
+  Qlik REST API
   (post result back)
 ```
 
@@ -121,8 +121,8 @@ The agent returns an `RCAReport` JSON object:
 }
 ```
 
-This is the contract that Qlik Automate would consume via HTTP and post back
-to the Qlik REST API or surface in the Management Console.
+This is the contract that a Qlik integration would consume via HTTP and
+surface in the Management Console.
 
 ### `workload_cost_agent.py` — Workload Cost Attribution Agent
 
@@ -552,11 +552,11 @@ The access audit agent also prints an SQL audit log to stderr.
 The SDK is designed for asynchronous, authoring-style workflows (30-90 second
 sessions), not sub-second interactions. The recommended integration pattern is:
 
-1. **Qlik Automate** fires an HTTP block or webhook on pipeline failure
+1. A **Qlik event** (webhook, scheduled trigger, or pipeline failure) fires
 2. A lightweight **backend service** (Flask, FastAPI, Lambda) receives the event
    and calls the SDK
 3. The SDK returns structured JSON
-4. The service posts the result back via the **Qlik REST API** or Automate
+4. The service posts the result back via the **Qlik REST API**
 
 Auth is either a scoped Snowflake service account or user OAuth. Snowflake
 governance, audit trail, and RBAC remain intact — CoCo is a specialist tool
