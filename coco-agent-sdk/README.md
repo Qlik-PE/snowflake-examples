@@ -345,70 +345,88 @@ it executed during the check — useful for compliance and debugging.
 
 ---
 
-### `legacy_translator_agent.py` — Legacy Artifact Translator
+### `sql_optimizer_agent.py` — SQL Optimizer Agent
 
-> **Relevant Qlik solutions:** Qlik Sense (QlikView migrations), Qlik Talend Cloud (Talend job migrations), Qlik Cloud Analytics
+> **Relevant Qlik solutions:** Qlik Cloud Analytics, Qlik Talend Cloud (Data Integration), Qlik Replicate
 
-Translates QlikView load scripts, Talend job XML, or QlikSense script fragments
-into idiomatic Snowflake SQL (CREATE TABLE, COPY INTO, dynamic tables, tasks).
-Returns a structured migration report with the generated DDL/DML and constructs
-that need manual review.
+Accepts a raw SQL query, analyzes it against Snowflake best practices, and
+returns a properly formatted and optimized version. The agent inspects the
+query plan (via EXPLAIN when a warehouse is provided), checks for common
+anti-patterns, and produces a structured report with the rewritten SQL,
+each optimization explained, and estimated impact.
 
-Maps to: *"Faster migrations to Qlik Cloud on Snowflake."*
+Maps to: *"Every query Qlik generates runs at peak Snowflake efficiency."*
 
 #### SDK features used
 
 | Feature | How it is used |
 |---|---|
-| `query()` | Single-shot agentic workflow |
-| `allowed_tools=["SQL"]` | Auto-approved SQL for validation queries |
-| `system_prompt` | Migration domain expertise injection |
-| `output_format` | Pydantic `MigrationReport` with per-statement confidence ratings |
-| `max_turns=20` | Higher cap for complex multi-step artifacts |
+| `CortexCodeSDKClient` | Multi-turn: turn 1 analyzes the query, turn 2 rewrites and validates |
+| `allowed_tools=["SQL"]` | Auto-approved SQL for EXPLAIN and validation queries |
+| `system_prompt` | Snowflake SQL optimization and formatting rules |
+| `output_format` | Pydantic `OptimizationReport` with per-optimization detail |
 
 #### Usage
 
 ```bash
-python legacy_translator_agent.py --file ./qlikview_load_script.qvs
+# Inline query
+python sql_optimizer_agent.py --query "SELECT * FROM orders WHERE order_date > '2024-01-01'"
 
-# Talend job
-python legacy_translator_agent.py --file ./talend_job.xml --dialect talend
+# From a .sql file
+python sql_optimizer_agent.py --file ./slow_query.sql
+
+# With EXPLAIN analysis
+python sql_optimizer_agent.py --file ./slow_query.sql --warehouse ANALYTICS_WH
 ```
 
 | Argument | Default | Description |
 |---|---|---|
-| `--file` | (required) | Path to the legacy artifact |
-| `--dialect` | `qlikview` | Source dialect: `qlikview`, `qliksense`, or `talend` |
+| `--query` | (mutually exclusive with `--file`) | SQL query string to optimize |
+| `--file` | (mutually exclusive with `--query`) | Path to a `.sql` file |
+| `--warehouse` | (empty) | Warehouse for EXPLAIN analysis (optional) |
 
 #### Output contract
 
 ```json
 {
-  "summary": "Translated 12 statements, 10 auto-translated, 2 need review",
-  "source_dialect": "qlikview",
-  "total_statements": 12,
-  "auto_translated": 10,
-  "needs_review": 2,
-  "translated_statements": [
+  "summary": "5 optimizations applied: 2 high-impact, 2 medium, 1 cosmetic",
+  "original_query": "SELECT * FROM orders o, customers c WHERE ...",
+  "optimized_query": "SELECT\n  o.order_id,\n  o.order_date,\n  ...",
+  "formatting_only": false,
+  "optimization_count": 5,
+  "optimizations": [
     {
-      "source_line": "LOAD CustomerID, Name FROM [lib://DataFiles/Customers.csv]",
-      "snowflake_sql": "COPY INTO STAGING.RAW.CUSTOMERS FROM @DATA_STAGE/Customers.csv ...",
-      "confidence": "high",
-      "notes": ""
+      "category": "anti_pattern",
+      "description": "Replace SELECT * with explicit column list to reduce I/O and improve pruning",
+      "before": "SELECT *",
+      "after": "SELECT o.order_id, o.order_date, o.total_amount, c.customer_name",
+      "impact": "high"
+    },
+    {
+      "category": "join",
+      "description": "Convert implicit comma-join to explicit INNER JOIN for clarity and optimizer hints",
+      "before": "FROM orders o, customers c WHERE o.customer_id = c.id",
+      "after": "FROM orders AS o\n  INNER JOIN customers AS c\n    ON o.customer_id = c.id",
+      "impact": "medium"
+    },
+    {
+      "category": "type_cast",
+      "description": "Add explicit DATE cast to string literal to enable partition pruning",
+      "before": "WHERE order_date > '2024-01-01'",
+      "after": "WHERE order_date > '2024-01-01'::DATE",
+      "impact": "high"
     }
   ],
-  "manual_review_items": [
+  "warnings": [
     {
-      "source_fragment": "IntervalMatch(OrderDate) LOAD StartDate, EndDate ...",
-      "reason": "IntervalMatch has no direct Snowflake equivalent",
-      "suggestion": "Rewrite as a range-join with BETWEEN in a dynamic table"
+      "severity": "info",
+      "message": "Consider adding a clustering key on ORDER_DATE if this filter pattern is frequent",
+      "line_reference": "WHERE clause"
     }
   ],
-  "full_snowflake_script": "-- Auto-generated Snowflake SQL\nCOPY INTO ..."
+  "estimated_improvement": "Partition pruning now effective on ORDER_DATE; expect 60-80% fewer micro-partitions scanned"
 }
 ```
-
-The generated Snowflake script is also written to disk as `<source_file>.snowflake.sql`.
 
 ---
 
@@ -635,17 +653,17 @@ RBAC, governance, and audit trail.
 Each prototype demonstrates different SDK capabilities to serve as reference
 implementations:
 
-| SDK Feature | RCA Agent | Cost Agent | Drift Checker | Pre-Flight | Legacy Translator | Freshness SLA | Access Audit |
+| SDK Feature | RCA Agent | Cost Agent | Drift Checker | Pre-Flight | SQL Optimizer | Freshness SLA | Access Audit |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `query()` (single-shot) | x | x | | x | x | | |
-| `CortexCodeSDKClient` (multi-turn) | | | x | | | x | x |
+| `query()` (single-shot) | x | x | | x | | | |
+| `CortexCodeSDKClient` (multi-turn) | | | x | | x | x | x |
 | `allowed_tools` | x | x | x | x | x | x | x |
 | `system_prompt` | x | x | x | x | x | x | x |
 | `output_format` (structured output) | x | x | x | x | x | x | x |
 | `hooks` (`PreToolUse`) | | | | x | | | x |
-| `max_turns` | x | x | | x | x | | |
+| `max_turns` | x | x | | x | | | |
 | Pydantic schema validation | x | x | x | x | x | x | x |
-| File I/O (read source artifact) | | | | | x | | |
+| EXPLAIN plan analysis | | | | | x | | |
 | Tag-based filtering | | | | | | x | |
 | Cross-reference (grants vs usage) | | | | | | | x |
 
@@ -659,7 +677,7 @@ These are candidates for future prototypes, ordered by integration effort:
 | Workload economics | "Qlik makes your Snowflake cheaper," with evidence | Replicate, Talend Cloud, Cloud Analytics | Medium | **Done** |
 | Data products to Snowflake semantic views | Qlik data products consumable by Cortex Agents | Talend Cloud (Data Products), Cloud Analytics | Medium | **Done** |
 | Pipeline pre-flight validation | Review becomes approval rather than debugging | Talend Cloud (DI, DQ), Replicate | Medium | **Done** |
-| Legacy artifact translation | Faster migrations to Qlik Cloud on Snowflake | Sense (QlikView), Talend Cloud (Talend jobs) | Low-Medium | **Done** |
+| SQL optimization | Every query Qlik generates runs at peak Snowflake efficiency | Cloud Analytics, Talend Cloud, Replicate | Low-Medium | **Done** |
 | Data freshness SLA monitoring | Qlik pipelines are always on time, with evidence | Talend Cloud (DI, DQ), Replicate, Cloud Analytics | Medium | **Done** |
 | Access audit / least-privilege | Every Qlik service account is least-privilege, with evidence | Replicate, Talend Cloud, Cloud Analytics | Medium | **Done** |
 | Agent fleet delegation | Every Qlik agent is better on Snowflake | All | High | Candidate |
