@@ -32,6 +32,8 @@ The SDK uses the default connection unless you override it in code.
 
 ### `snowflake_rca_agent.py` — Reload / CDC Failure Root-Cause Investigator
 
+> **Relevant Qlik solutions:** Qlik Replicate, Qlik Talend Cloud (Data Integration), Qlik Cloud Analytics
+
 When a Qlik reload or Replicate task fails, this script launches a CoCo agent
 session that investigates the Snowflake side and returns a structured JSON report
 with root cause and remediation SQL.
@@ -126,6 +128,8 @@ surface in the Management Console.
 
 ### `workload_cost_agent.py` — Workload Cost Attribution Agent
 
+> **Relevant Qlik solutions:** Qlik Replicate, Qlik Talend Cloud (Data Integration), Qlik Cloud Analytics
+
 Queries `SNOWFLAKE.ACCOUNT_USAGE` to attribute Snowflake credit consumption to
 Qlik-originated workloads. Returns a structured cost breakdown by warehouse,
 identifies the most expensive queries, and provides optimization recommendations
@@ -190,6 +194,8 @@ python workload_cost_agent.py --days 7 --user QLIK_SVC --warehouse QLIK_WH
 ---
 
 ### `semantic_drift_agent.py` — Semantic View Drift Checker
+
+> **Relevant Qlik solutions:** Qlik Talend Cloud (Data Products), Qlik Cloud Analytics
 
 Multi-turn agent that compares a Qlik Data Product definition against a Snowflake
 semantic view. Detects drift (added/removed columns, type mismatches, broken
@@ -258,6 +264,8 @@ python semantic_drift_agent.py \
 ---
 
 ### `preflight_validator_agent.py` — Pipeline Pre-Flight Validator
+
+> **Relevant Qlik solutions:** Qlik Talend Cloud (Data Integration, Data Quality), Qlik Replicate
 
 Before a Qlik Declarative Pipeline runs, this agent checks the Snowflake side:
 target objects exist, the service role has required grants, warehouses are running,
@@ -339,6 +347,8 @@ it executed during the check — useful for compliance and debugging.
 
 ### `legacy_translator_agent.py` — Legacy Artifact Translator
 
+> **Relevant Qlik solutions:** Qlik Sense (QlikView migrations), Qlik Talend Cloud (Talend job migrations), Qlik Cloud Analytics
+
 Translates QlikView load scripts, Talend job XML, or QlikSense script fragments
 into idiomatic Snowflake SQL (CREATE TABLE, COPY INTO, dynamic tables, tasks).
 Returns a structured migration report with the generated DDL/DML and constructs
@@ -403,6 +413,8 @@ The generated Snowflake script is also written to disk as `<source_file>.snowfla
 ---
 
 ### `data_freshness_agent.py` — Data Freshness SLA Monitor
+
+> **Relevant Qlik solutions:** Qlik Talend Cloud (Data Integration, Data Quality), Qlik Replicate, Qlik Cloud Analytics
 
 Scheduled agent that checks whether Qlik-managed tables meet their freshness
 SLAs. Queries INFORMATION_SCHEMA and TASK_HISTORY to compute staleness, diagnose
@@ -479,6 +491,8 @@ python data_freshness_agent.py --database STAGING --schema RAW --sla-hours 1 --t
 
 ### `access_audit_agent.py` — Access Audit Agent
 
+> **Relevant Qlik solutions:** Qlik Replicate, Qlik Talend Cloud (Data Integration), Qlik Cloud Analytics
+
 Audits Snowflake access patterns for Qlik service accounts. Identifies
 over-privileged roles, unused grants, and access anomalies by cross-referencing
 SHOW GRANTS against ACCESS_HISTORY. Returns a security report with least-privilege
@@ -549,6 +563,8 @@ The access audit agent also prints an SQL audit log to stderr.
 
 ## Integration architecture
 
+### Approach 1: Cortex Code Agent SDK (Python)
+
 The SDK is designed for asynchronous, authoring-style workflows (30-90 second
 sessions), not sub-second interactions. The recommended integration pattern is:
 
@@ -561,6 +577,58 @@ sessions), not sub-second interactions. The recommended integration pattern is:
 Auth is either a scoped Snowflake service account or user OAuth. Snowflake
 governance, audit trail, and RBAC remain intact — CoCo is a specialist tool
 behind the Qlik agent, not a replacement for it.
+
+### Approach 2: Cortex Agent + Cortex REST API
+
+An alternative to the Python SDK is to define the agent directly in Snowflake
+as a SQL object using `CREATE AGENT`, then invoke it over the
+[Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api).
+This keeps everything server-side — no Python process or backend service needed.
+
+```sql
+CREATE OR REPLACE AGENT MY_DB.MY_SCHEMA.MY_AGENT
+  COMMENT = 'Parses, extracts, and answers questions using Cortex AI functions'
+  PROFILE = '{"display_name": "My Agent", "color": "orange"}'
+  FROM SPECIFICATION
+  $$
+  models:
+    orchestration: auto
+
+  instructions:
+    system: |
+      You are a specialist agent that ...
+
+    response: |
+      Present results in a structured format ...
+
+    sample_questions:
+      - question: "What are the key findings?"
+
+  tools:
+    - tool_spec:
+        type: code_toolset_all
+        name: code_toolset_all
+
+  tool_resources:
+    code_toolset_all:
+      permission_policy:
+        type: always_allow
+  $$;
+```
+
+Once the agent is created, any Qlik integration can call it directly via the
+Cortex REST API — no SDK installation, no Python runtime, no intermediate
+backend service. The agent runs entirely within Snowflake and inherits its
+RBAC, governance, and audit trail.
+
+**When to use which approach:**
+
+| | SDK (Python) | Cortex Agent (SQL + REST API) |
+|---|---|---|
+| **Runtime** | External Python process | Server-side, fully in Snowflake |
+| **Infrastructure** | Requires a backend service (Flask, Lambda, etc.) | No extra infrastructure — call the REST API directly |
+| **Flexibility** | Full Python control: hooks, multi-turn, file I/O, custom logic | Declarative SQL spec with tool resources |
+| **Best for** | Complex orchestration, audit hooks, local file processing, multi-step workflows | Stateless request/response, simpler integrations, keeping everything in Snowflake |
 
 ## SDK feature coverage across prototypes
 
@@ -585,13 +653,13 @@ implementations:
 
 These are candidates for future prototypes, ordered by integration effort:
 
-| Use case | Value | Effort | Status |
-|---|---|---|---|
-| Reload / CDC failure root-cause | Cross-system triage arrives solved | Low | **Done** |
-| Workload economics | "Qlik makes your Snowflake cheaper," with evidence | Medium | **Done** |
-| Data products to Snowflake semantic views | Qlik data products consumable by Cortex Agents | Medium | **Done** |
-| Pipeline pre-flight validation | Review becomes approval rather than debugging | Medium | **Done** |
-| Legacy artifact translation | Faster migrations to Qlik Cloud on Snowflake | Low-Medium | **Done** |
-| Data freshness SLA monitoring | Qlik pipelines are always on time, with evidence | Medium | **Done** |
-| Access audit / least-privilege | Every Qlik service account is least-privilege, with evidence | Medium | **Done** |
-| Agent fleet delegation (Helper, Automate, Data Product agents hand Snowflake tasks to CoCo) | Every Qlik agent is better on Snowflake | High | Candidate |
+| Use case | Value | Qlik solutions | Effort | Status |
+|---|---|---|---|---|
+| Reload / CDC failure root-cause | Cross-system triage arrives solved | Replicate, Talend Cloud, Cloud Analytics | Low | **Done** |
+| Workload economics | "Qlik makes your Snowflake cheaper," with evidence | Replicate, Talend Cloud, Cloud Analytics | Medium | **Done** |
+| Data products to Snowflake semantic views | Qlik data products consumable by Cortex Agents | Talend Cloud (Data Products), Cloud Analytics | Medium | **Done** |
+| Pipeline pre-flight validation | Review becomes approval rather than debugging | Talend Cloud (DI, DQ), Replicate | Medium | **Done** |
+| Legacy artifact translation | Faster migrations to Qlik Cloud on Snowflake | Sense (QlikView), Talend Cloud (Talend jobs) | Low-Medium | **Done** |
+| Data freshness SLA monitoring | Qlik pipelines are always on time, with evidence | Talend Cloud (DI, DQ), Replicate, Cloud Analytics | Medium | **Done** |
+| Access audit / least-privilege | Every Qlik service account is least-privilege, with evidence | Replicate, Talend Cloud, Cloud Analytics | Medium | **Done** |
+| Agent fleet delegation | Every Qlik agent is better on Snowflake | All | High | Candidate |
