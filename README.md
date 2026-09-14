@@ -16,6 +16,7 @@ snowflake-examples/
 │   ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
 │   └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
 ├── skills/                     # Cortex Code skills for Qlik ↔ Snowflake workflows
+├── coco-agent-sdk/             # Cortex Code Agent SDK prototypes (Python)
 ```
 
 ## What's Included
@@ -42,6 +43,20 @@ snowflake-examples/
 
 - **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent that provides a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
 - **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server. Copy and customize.
+
+### Cortex Code Agent SDK (`coco-agent-sdk/`)
+
+Python prototypes that embed the [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) into Qlik integration workflows. Each script launches an agentic session that queries Snowflake autonomously and returns structured JSON suitable for consumption by Qlik Automate or the Qlik REST API.
+
+- **[snowflake_rca_agent.py](coco-agent-sdk/snowflake_rca_agent.py)** — Investigates Snowflake-side failures when a Qlik reload or CDC pipeline errors out. Queries `QUERY_HISTORY` and `WAREHOUSE_EVENTS` and returns a root-cause report with remediation SQL.
+- **[workload_cost_agent.py](coco-agent-sdk/workload_cost_agent.py)** — Attributes Snowflake credit consumption to Qlik-originated workloads. Breaks down costs by warehouse, surfaces the most expensive queries, and recommends scheduling or sizing optimizations.
+- **[semantic_drift_agent.py](coco-agent-sdk/semantic_drift_agent.py)** — Compares a Qlik Data Product definition against a Snowflake Semantic View (multi-turn). Detects column drift, type mismatches, and broken verified queries, then produces reconciliation DDL.
+- **[preflight_validator_agent.py](coco-agent-sdk/preflight_validator_agent.py)** — Pre-flight check before a Qlik pipeline runs: verifies target objects exist, the service role has required grants, warehouses are running, and dynamic tables are healthy. Includes a `PreToolUse` hook for SQL audit logging.
+- **[legacy_translator_agent.py](coco-agent-sdk/legacy_translator_agent.py)** — Translates QlikView load scripts, QlikSense scripts, or Talend job XML into idiomatic Snowflake SQL (dynamic tables, COPY INTO, tasks). Rates confidence per statement and flags constructs needing manual review.
+- **[data_freshness_agent.py](coco-agent-sdk/data_freshness_agent.py)** — SLA monitor that checks whether Qlik-managed tables meet freshness thresholds (multi-turn). Diagnoses root causes by cross-referencing `TASK_HISTORY` and produces remediation SQL.
+- **[access_audit_agent.py](coco-agent-sdk/access_audit_agent.py)** — Audits Qlik service account grants against `ACCESS_HISTORY` to find unused privileges and access anomalies (multi-turn + audit hook). Returns least-privilege REVOKE/GRANT recommendations with risk ratings.
+
+See the [coco-agent-sdk README](coco-agent-sdk/README.md) for setup, architecture diagrams, and the full SDK feature coverage matrix.
 
 ## Prerequisites
 

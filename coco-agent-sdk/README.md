@@ -337,6 +337,216 @@ it executed during the check — useful for compliance and debugging.
 
 ---
 
+### `legacy_translator_agent.py` — Legacy Artifact Translator
+
+Translates QlikView load scripts, Talend job XML, or QlikSense script fragments
+into idiomatic Snowflake SQL (CREATE TABLE, COPY INTO, dynamic tables, tasks).
+Returns a structured migration report with the generated DDL/DML and constructs
+that need manual review.
+
+Maps to: *"Faster migrations to Qlik Cloud on Snowflake."*
+
+#### SDK features used
+
+| Feature | How it is used |
+|---|---|
+| `query()` | Single-shot agentic workflow |
+| `allowed_tools=["SQL"]` | Auto-approved SQL for validation queries |
+| `system_prompt` | Migration domain expertise injection |
+| `output_format` | Pydantic `MigrationReport` with per-statement confidence ratings |
+| `max_turns=20` | Higher cap for complex multi-step artifacts |
+
+#### Usage
+
+```bash
+python legacy_translator_agent.py --file ./qlikview_load_script.qvs
+
+# Talend job
+python legacy_translator_agent.py --file ./talend_job.xml --dialect talend
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--file` | (required) | Path to the legacy artifact |
+| `--dialect` | `qlikview` | Source dialect: `qlikview`, `qliksense`, or `talend` |
+
+#### Output contract
+
+```json
+{
+  "summary": "Translated 12 statements, 10 auto-translated, 2 need review",
+  "source_dialect": "qlikview",
+  "total_statements": 12,
+  "auto_translated": 10,
+  "needs_review": 2,
+  "translated_statements": [
+    {
+      "source_line": "LOAD CustomerID, Name FROM [lib://DataFiles/Customers.csv]",
+      "snowflake_sql": "COPY INTO STAGING.RAW.CUSTOMERS FROM @DATA_STAGE/Customers.csv ...",
+      "confidence": "high",
+      "notes": ""
+    }
+  ],
+  "manual_review_items": [
+    {
+      "source_fragment": "IntervalMatch(OrderDate) LOAD StartDate, EndDate ...",
+      "reason": "IntervalMatch has no direct Snowflake equivalent",
+      "suggestion": "Rewrite as a range-join with BETWEEN in a dynamic table"
+    }
+  ],
+  "full_snowflake_script": "-- Auto-generated Snowflake SQL\nCOPY INTO ..."
+}
+```
+
+The generated Snowflake script is also written to disk as `<source_file>.snowflake.sql`.
+
+---
+
+### `data_freshness_agent.py` — Data Freshness SLA Monitor
+
+Scheduled agent that checks whether Qlik-managed tables meet their freshness
+SLAs. Queries INFORMATION_SCHEMA and TASK_HISTORY to compute staleness, diagnose
+why tables fell behind, and returns a structured report with SLA violations and
+remediation SQL (resume tasks, adjust schedules).
+
+Maps to: *"Qlik pipelines are always on time, with evidence."*
+
+#### SDK features used
+
+| Feature | How it is used |
+|---|---|
+| `CortexCodeSDKClient` | Multi-turn session: turn 1 measures freshness, turn 2 diagnoses root causes |
+| `allowed_tools=["SQL"]` | Auto-approved SQL for metadata and task history queries |
+| `system_prompt` | Data operations expertise |
+| `output_format` | Pydantic `FreshnessReport` with per-table staleness and root causes |
+
+#### Usage
+
+```bash
+python data_freshness_agent.py --database ANALYTICS --schema PUBLIC --sla-hours 4
+
+# With tag filtering
+python data_freshness_agent.py --database STAGING --schema RAW --sla-hours 1 --tag QLIK_MANAGED
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--database` | (required) | Target Snowflake database |
+| `--schema` | (required) | Target Snowflake schema |
+| `--sla-hours` | `4.0` | Maximum acceptable staleness in hours |
+| `--tag` | (empty) | Optional Snowflake tag to filter tables |
+
+#### Output contract
+
+```json
+{
+  "summary": "3 of 15 tables violating 4h SLA; 2 due to suspended tasks",
+  "database": "ANALYTICS",
+  "schema_name": "PUBLIC",
+  "sla_hours": 4.0,
+  "total_tables": 15,
+  "tables_meeting_sla": 12,
+  "tables_violating_sla": 3,
+  "table_details": [
+    {
+      "table_name": "ANALYTICS.PUBLIC.ORDERS",
+      "last_altered": "2026-09-14T08:15:00Z",
+      "hours_stale": 6.5,
+      "sla_hours": 4.0,
+      "sla_met": false,
+      "row_count": 1420000
+    }
+  ],
+  "root_causes": [
+    {
+      "table_name": "ANALYTICS.PUBLIC.ORDERS",
+      "cause": "task_suspended",
+      "last_task_run": "2026-09-14T02:00:00Z",
+      "task_name": "RELOAD_ORDERS_TASK",
+      "error_message": ""
+    }
+  ],
+  "remediations": [
+    {
+      "description": "Resume the suspended reload task",
+      "sql": "ALTER TASK ANALYTICS.PUBLIC.RELOAD_ORDERS_TASK RESUME;"
+    }
+  ]
+}
+```
+
+---
+
+### `access_audit_agent.py` — Access Audit Agent
+
+Audits Snowflake access patterns for Qlik service accounts. Identifies
+over-privileged roles, unused grants, and access anomalies by cross-referencing
+SHOW GRANTS against ACCESS_HISTORY. Returns a security report with least-privilege
+recommendations and ready-to-run REVOKE/GRANT SQL.
+
+Maps to: *"Every Qlik service account is least-privilege, with evidence."*
+
+#### SDK features used
+
+| Feature | How it is used |
+|---|---|
+| `CortexCodeSDKClient` | Multi-turn: turn 1 inventories grants, turn 2 cross-references with usage |
+| `allowed_tools=["SQL"]` | Auto-approved SQL for SHOW GRANTS and ACCOUNT_USAGE queries |
+| `system_prompt` | Security domain expertise |
+| `output_format` | Pydantic `AccessAuditReport` with per-grant used/unused status |
+| `hooks` (`PreToolUse`) | Logs every SQL statement to an audit trail for compliance |
+
+#### Usage
+
+```bash
+python access_audit_agent.py --role QLIK_ROLE
+
+# Targeted audit
+python access_audit_agent.py --role QLIK_ROLE --user QLIK_SVC --days 30
+```
+
+| Argument | Default | Description |
+|---|---|---|
+| `--role` | (required) | Snowflake role to audit |
+| `--user` | `*` (all) | Specific user to audit |
+| `--days` | `30` | Lookback period in days |
+
+#### Output contract
+
+```json
+{
+  "summary": "QLIK_ROLE has 47 grants, 12 unused in the last 30 days; 1 critical anomaly",
+  "role": "QLIK_ROLE",
+  "user": "QLIK_SVC",
+  "audit_period_days": 30,
+  "total_grants": 47,
+  "used_grants": 35,
+  "unused_grants": 12,
+  "anomaly_count": 1,
+  "grant_details": [ ... ],
+  "anomalies": [
+    {
+      "anomaly_type": "admin_grant",
+      "description": "QLIK_ROLE inherits SYSADMIN through intermediate role DBA_ROLE",
+      "severity": "critical",
+      "object_name": "SYSADMIN"
+    }
+  ],
+  "recommendations": [
+    {
+      "action": "revoke",
+      "description": "Remove unused SELECT on STAGING.RAW.LEGACY_EVENTS (not accessed in 30d)",
+      "sql": "REVOKE SELECT ON TABLE STAGING.RAW.LEGACY_EVENTS FROM ROLE QLIK_ROLE;",
+      "risk": "safe"
+    }
+  ]
+}
+```
+
+The access audit agent also prints an SQL audit log to stderr.
+
+---
+
 ## Integration architecture
 
 The SDK is designed for asynchronous, authoring-style workflows (30-90 second
@@ -357,16 +567,19 @@ behind the Qlik agent, not a replacement for it.
 Each prototype demonstrates different SDK capabilities to serve as reference
 implementations:
 
-| SDK Feature | RCA Agent | Cost Agent | Drift Checker | Pre-Flight |
-|---|:---:|:---:|:---:|:---:|
-| `query()` (single-shot) | x | x | | x |
-| `CortexCodeSDKClient` (multi-turn) | | | x | |
-| `allowed_tools` | x | x | x | x |
-| `system_prompt` | x | x | x | x |
-| `output_format` (structured output) | x | x | x | x |
-| `hooks` (`PreToolUse`) | | | | x |
-| `max_turns` | x | x | | x |
-| Pydantic schema validation | x | x | x | x |
+| SDK Feature | RCA Agent | Cost Agent | Drift Checker | Pre-Flight | Legacy Translator | Freshness SLA | Access Audit |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| `query()` (single-shot) | x | x | | x | x | | |
+| `CortexCodeSDKClient` (multi-turn) | | | x | | | x | x |
+| `allowed_tools` | x | x | x | x | x | x | x |
+| `system_prompt` | x | x | x | x | x | x | x |
+| `output_format` (structured output) | x | x | x | x | x | x | x |
+| `hooks` (`PreToolUse`) | | | | x | | | x |
+| `max_turns` | x | x | | x | x | | |
+| Pydantic schema validation | x | x | x | x | x | x | x |
+| File I/O (read source artifact) | | | | | x | | |
+| Tag-based filtering | | | | | | x | |
+| Cross-reference (grants vs usage) | | | | | | | x |
 
 ## Further use cases
 
@@ -378,5 +591,7 @@ These are candidates for future prototypes, ordered by integration effort:
 | Workload economics | "Qlik makes your Snowflake cheaper," with evidence | Medium | **Done** |
 | Data products to Snowflake semantic views | Qlik data products consumable by Cortex Agents | Medium | **Done** |
 | Pipeline pre-flight validation | Review becomes approval rather than debugging | Medium | **Done** |
-| Legacy artifact translation (load scripts, QlikView docs, Talend jobs) | Faster migrations to Qlik Cloud on Snowflake | Low-Medium | Candidate |
+| Legacy artifact translation | Faster migrations to Qlik Cloud on Snowflake | Low-Medium | **Done** |
+| Data freshness SLA monitoring | Qlik pipelines are always on time, with evidence | Medium | **Done** |
+| Access audit / least-privilege | Every Qlik service account is least-privilege, with evidence | Medium | **Done** |
 | Agent fleet delegation (Helper, Automate, Data Product agents hand Snowflake tasks to CoCo) | Every Qlik agent is better on Snowflake | High | Candidate |
