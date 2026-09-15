@@ -1,27 +1,33 @@
 # Cortex Code SDK
 
-## Why the Cortex Code Agent SDK
+## Why the Cortex Code Agent SDK for Qlik Solutions
 
-The [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) turns [Snowflake CoCo](https://www.snowflake.com/en/product/features/cortex-code/) from an interactive CLI into a programmable engine for autonomous AI workflows. Your Python or TypeScript code drives the same agentic loop, tools, and Snowflake-native context that power the CoCo CLI and Desktop — without reimplementing tool execution or orchestration.
+Qlik integration workflows — reloads, CDC pipelines, data product governance, cost attribution — span both Qlik Cloud and Snowflake. Investigating failures, validating pipelines, or auditing access requires querying Snowflake metadata (QUERY_HISTORY, TASK_HISTORY, ACCESS_HISTORY, INFORMATION_SCHEMA) and acting on the results. The [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) lets you automate that cross-system work as programmable AI agents that Qlik Automate, Qlik Application Automation, or any Python/TypeScript backend can trigger.
 
-**What it gives you:**
+**What it solves for Qlik teams:**
 
-- **Built-in tools out of the box.** Read/write/edit files, run shell commands, search codebases with glob and grep, and execute SQL against Snowflake — no tool implementation needed.
-- **Data-native context.** Agents are grounded in your Snowflake catalog, lineage, RBAC policies, and compute environment from the first prompt, so generated code references real objects with correct permissions.
-- **Multi-turn sessions.** Maintain conversation context across multiple exchanges with `CortexCodeSDKClient` (Python) or `createCortexCodeSession` (TypeScript). Resume or fork previous sessions.
-- **Structured output.** Force agents to return JSON matching a schema you define, then validate client-side with Pydantic or TypeScript types.
-- **Lifecycle hooks.** Intercept agent behavior at key points (`PreToolUse`, `PostToolUse`, `Stop`) for audit logging, approval gates, or custom routing.
-- **MCP server support.** Connect agents to external systems (Jira, GitHub, Qlik, Salesforce) via the Model Context Protocol.
-- **Model choice.** Select from Claude Opus, Claude Sonnet, and OpenAI GPT models — or use `auto` to let Snowflake pick the best available.
+- **Pipeline failure triage without context-switching.** When a Qlik reload or Replicate task fails, an SDK agent investigates the Snowflake side autonomously — querying QUERY_HISTORY, WAREHOUSE_EVENTS, and task metadata — and returns a structured root-cause report with remediation SQL. No manual Snowsight investigation needed.
+- **Cost attribution back to Qlik workloads.** Attribute Snowflake credit consumption to specific Qlik-originated queries, warehouses, and users. Surface the most expensive operations and produce optimization recommendations that Qlik operations teams can act on.
+- **Semantic view drift detection.** When Qlik Data Products evolve, an agent compares the DP definition against its Snowflake Semantic View, detects column drift and type mismatches, and generates reconciliation DDL — keeping governed metadata in sync.
+- **Pre-flight validation before pipeline runs.** Before a Qlik Declarative Pipeline executes, an agent checks that target tables exist, the service role has required grants, warehouses are running, and dynamic tables are healthy. Returns a GO/NO_GO verdict with remediation SQL for every issue.
+- **Least-privilege auditing for Qlik service accounts.** Cross-references role grants against actual ACCESS_HISTORY usage to find over-privileged roles and unused permissions, then produces REVOKE/GRANT SQL with risk ratings.
+
+**Why the SDK over raw SQL or scripts:**
+
+- **Built-in Snowflake tools.** Execute SQL, read files, run shell commands, search codebases — no tool implementation needed. The agent queries ACCOUNT_USAGE views, interprets results, and reasons over them autonomously.
+- **Structured output for Qlik consumption.** Force agents to return JSON matching a Pydantic schema, ready for ingestion by Qlik Automate webhooks, the Qlik REST API, or downstream Qlik analytics apps.
+- **Multi-turn investigation.** Complex diagnostics (e.g., inventory grants in turn 1, cross-reference with usage in turn 2) happen within a single session context — the agent remembers what it found.
+- **Audit hooks.** `PreToolUse` hooks log every SQL statement the agent executes, providing a full audit trail for compliance-sensitive Qlik integration workflows.
+- **MCP connectivity.** Connect agents to Qlik Cloud MCP servers alongside Snowflake tools, enabling agents that reason across both platforms in a single session.
 
 **When to use the SDK vs a SQL Cortex Agent:**
 
 | Use the SDK when you need | Use a SQL agent (`CREATE AGENT`) when you need |
 |---|---|
-| Client-side hooks and audit logging | Zero-infrastructure server-side execution |
-| Pydantic/TypeScript schema validation | `DATA_AGENT_RUN()` from SQL worksheets or Tasks |
-| Custom orchestration logic in Python/TS | REST API integration with any HTTP client |
-| Integration into existing Python apps | Qlik Automate or other no-code triggers |
+| Qlik Automate triggers with structured JSON output | `DATA_AGENT_RUN()` from Snowflake Tasks or stored procedures |
+| `PreToolUse` audit hooks for compliance logging | Zero-infrastructure server-side execution |
+| Multi-turn investigation with Pydantic validation | REST API integration from any HTTP client |
+| Dual Qlik MCP + Snowflake SQL tool access in one session | Snowflake Intelligence (CoWork) sidebar access |
 
 For a detailed feature-by-feature comparison, see the [SDK vs Cortex Agent table](#sdk-python-vs-cortex-agent-sql--rest-api) below.
 
