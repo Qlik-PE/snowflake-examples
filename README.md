@@ -10,24 +10,37 @@ This repository contains working examples that demonstrate Snowflake + Qlik inte
 
 ```
 snowflake-examples/
-├── mcp/                        # MCP server integrations (Qlik Cloud ↔ Snowflake)
-├── sql/                        # SQL scripts and demos
-├── native-apps/                # Native App Framework examples
-│   ├── embedded-analytics-kit/ # Cortex Agent over Snowflake + Qlik dashboards
-│   └── qlik-connector-app/     # Boilerplate Native App with Qlik MCP
-├── skills/                     # Cortex Code skills for Qlik ↔ Snowflake workflows
-├── coco-agent-sdk/             # Cortex Code Agent SDK prototypes (Python)
+├── cortex-code-sdk/                # Cortex Code Agent SDK (Python SDK + SQL CREATE AGENT)
+│   ├── sdk/                        #   Python agents using the Cortex Code Agent SDK
+│   ├── sql/                        #   SQL agents (code_toolset_all) with REST API examples
+│   └── README.md                   #   Use case mapping, SDK vs REST comparison
+├── mcp/                            # MCP server integrations (Qlik Cloud ↔ Snowflake)
+├── sql/                            # SQL scripts and Cortex AI demos
+├── native-apps/                    # Native App Framework examples
+│   ├── embedded-analytics-kit/     #   Cortex Agent over Snowflake + Qlik dashboards
+│   └── qlik-connector-app/         #   Boilerplate Native App with Qlik MCP
+├── skills/                         # Cortex Code skills
+├── cortex_project/                 # Cortex project definitions (agent + semantic view)
 ```
 
 ## What's Included
 
+### Cortex Code SDK (`cortex-code-sdk/`)
+
+Seven operational use cases — failure RCA, cost attribution, semantic drift, pre-flight validation, SQL optimization, freshness monitoring, and access audit — each implemented as both a **Python SDK agent** and a **SQL `CREATE AGENT`** with REST API call examples. Plus a document intelligence agent (SQL only).
+
+See the [cortex-code-sdk README](cortex-code-sdk/README.md) for the full use case mapping, SDK vs Cortex Agent comparison, and REST API calling guide.
+
 ### MCP Integrations (`mcp/`)
 
-- **[create-mcp-agent.sql](mcp/create-mcp-agent.sql)** — End-to-end SQL script to provision a Qlik Cloud MCP integration in Snowflake (API integration, external MCP server, Cortex Agent, Snowflake Intelligence registration).
-- **[create-dual-source-agent.sql](mcp/create-dual-source-agent.sql)** — Creates a dual-source comparison agent that queries both Qlik MCP and a Snowflake Semantic View, then returns a structured comparison (expression/SQL, tool calls, duration, token usage).
-- **[create-multi-mcp-agent.sql](mcp/create-multi-mcp-agent.sql)** — Creates a multi-MCP agent wired to two external MCP servers (e.g., Qlik + Salesforce/GitHub/Jira) with orchestration routing between tool namespaces.
+- **[create-mcp-agent.sql](mcp/create-mcp-agent.sql)** — End-to-end provisioning of a Qlik Cloud MCP integration (API integration, external MCP server, Cortex Agent, Snowflake Intelligence registration).
+- **[create-dual-source-agent.sql](mcp/create-dual-source-agent.sql)** — Dual-source comparison agent: queries both Qlik MCP and a Snowflake Semantic View, returns a structured comparison (expression/SQL, tool calls, duration, token usage).
+- **[create-multi-mcp-agent.sql](mcp/create-multi-mcp-agent.sql)** — Multi-MCP agent wired to two external MCP servers (e.g., Qlik + Salesforce/GitHub/Jira) with orchestration routing between tool namespaces.
+- **[create-mcp-first-fallback-agent.sql](mcp/create-mcp-first-fallback-agent.sql)** — MCP-first agent with Semantic View fallback: routes every question to Qlik MCP first, falls back to Cortex Analyst only when Qlik cannot answer.
 - **[coco-qlik-mcp-public-client-setup.md](mcp/coco-qlik-mcp-public-client-setup.md)** — Setup guide for connecting Cortex Code CLI to Qlik MCP using a public OAuth client with PKCE.
 - **[coco-desktop-qlik-mcp-public-client-setup-windows.md](mcp/coco-desktop-qlik-mcp-public-client-setup-windows.md)** — Same as above, tailored for Cortex Code Desktop on Windows.
+
+See the [mcp README](mcp/README.md) for OAuth setup, troubleshooting, and agent pattern details.
 
 ### SQL Demos (`sql/`)
 
@@ -35,28 +48,19 @@ snowflake-examples/
 - **[cortex-search-rag.sql](sql/cortex-search-rag.sql)** — End-to-end Cortex Search + RAG pipeline: creates a knowledge base, builds a hybrid search service, and wires it to a Cortex Agent for retrieval-augmented generation.
 - **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Inspects token and credit consumption by Cortex Agents, broken down by agent and LLM model.
 
-### Skills (`skills/`)
-
-- **[qlik-dp-to-semantic-view.md](skills/qlik-dp-to-semantic-view.md)** — Cortex Code skill that converts a Qlik Talend Cloud Data Product into a Snowflake Semantic View, preserving governed metadata (descriptions, glossary definitions, trust scores) as first-class semantic metadata. Covers the full workflow: harvesting DP metadata via MCP, handling quoted-case identifiers, classifying fields, deriving metrics from glossary terms, building relationships, assembling DDL, and validating the result with Cortex Analyst.
-
 ### Native Apps (`native-apps/`)
 
-- **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent that provides a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
-- **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server. Copy and customize.
+- **[Embedded Analytics Starter Kit](native-apps/embedded-analytics-kit/)** — A Cortex Agent providing a unified AI analytics experience over both Snowflake data (via a Semantic View) and Qlik Cloud dashboards (via MCP). Includes agent spec, semantic model, consumer setup, and sample questions.
+- **[Qlik Connector App (Boilerplate)](native-apps/qlik-connector-app/)** — Minimal Native App template for any integration needing a Cortex Agent wired to both a Snowflake Semantic View and a Qlik MCP server.
 
-### Cortex Code Agent SDK (`coco-agent-sdk/`)
+### Skills (`skills/`)
 
-Python prototypes that embed the [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) into Qlik integration workflows. Each script launches an agentic session that queries Snowflake autonomously and returns structured JSON suitable for consumption by Qlik Automate or the Qlik REST API.
+- **[qlik-dp-to-semantic-view.md](skills/qlik-dp-to-semantic-view.md)** — Cortex Code skill that converts a Qlik Talend Cloud Data Product into a Snowflake Semantic View, preserving governed metadata (descriptions, glossary definitions, trust scores).
 
-- **[snowflake_rca_agent.py](coco-agent-sdk/snowflake_rca_agent.py)** — Investigates Snowflake-side failures when a Qlik reload or CDC pipeline errors out. Queries `QUERY_HISTORY` and `WAREHOUSE_EVENTS` and returns a root-cause report with remediation SQL.
-- **[workload_cost_agent.py](coco-agent-sdk/workload_cost_agent.py)** — Attributes Snowflake credit consumption to Qlik-originated workloads. Breaks down costs by warehouse, surfaces the most expensive queries, and recommends scheduling or sizing optimizations.
-- **[semantic_drift_agent.py](coco-agent-sdk/semantic_drift_agent.py)** — Compares a Qlik Data Product definition against a Snowflake Semantic View (multi-turn). Detects column drift, type mismatches, and broken verified queries, then produces reconciliation DDL.
-- **[preflight_validator_agent.py](coco-agent-sdk/preflight_validator_agent.py)** — Pre-flight check before a Qlik pipeline runs: verifies target objects exist, the service role has required grants, warehouses are running, and dynamic tables are healthy. Includes a `PreToolUse` hook for SQL audit logging.
-- **[sql_optimizer_agent.py](coco-agent-sdk/sql_optimizer_agent.py)** — Accepts a raw SQL query (inline or from a file), analyzes it against Snowflake best practices, and returns a properly formatted and optimized version with per-optimization explanations and estimated impact.
-- **[data_freshness_agent.py](coco-agent-sdk/data_freshness_agent.py)** — SLA monitor that checks whether Qlik-managed tables meet freshness thresholds (multi-turn). Diagnoses root causes by cross-referencing `TASK_HISTORY` and produces remediation SQL.
-- **[access_audit_agent.py](coco-agent-sdk/access_audit_agent.py)** — Audits Qlik service account grants against `ACCESS_HISTORY` to find unused privileges and access anomalies (multi-turn + audit hook). Returns least-privilege REVOKE/GRANT recommendations with risk ratings.
+### Cortex Project (`cortex_project/`)
 
-See the [coco-agent-sdk README](coco-agent-sdk/README.md) for setup, architecture diagrams, and the full SDK feature coverage matrix.
+- **[cortex-project.yaml](cortex_project/cortex-project.yaml)** — Project definition referencing a Semantic View and a Cortex Agent for SAP delivery analytics.
+- **[LOGISTICS_AGENT.agent.yaml](cortex_project/LOGISTICS_AGENT.agent.yaml)** — Agent spec for a logistics and delivery performance analyst using `cortex_analyst_text_to_sql`.
 
 ## Prerequisites
 
