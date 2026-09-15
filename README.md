@@ -20,7 +20,6 @@ snowflake-examples/
 │   ├── embedded-analytics-kit/     #   Cortex Agent over Snowflake + Qlik dashboards
 │   └── qlik-connector-app/         #   Boilerplate Native App with Qlik MCP
 ├── skills/                         # Cortex Code skills
-├── cortex_project/                 # Cortex project definitions (agent + semantic view)
 ```
 
 ## What's Included
@@ -56,11 +55,6 @@ See the [mcp README](mcp/README.md) for OAuth setup, troubleshooting, and agent 
 ### Skills (`skills/`)
 
 - **[qlik-dp-to-semantic-view.md](skills/qlik-dp-to-semantic-view.md)** — Cortex Code skill that converts a Qlik Talend Cloud Data Product into a Snowflake Semantic View, preserving governed metadata (descriptions, glossary definitions, trust scores).
-
-### Cortex Project (`cortex_project/`)
-
-- **[cortex-project.yaml](cortex_project/cortex-project.yaml)** — Project definition referencing a Semantic View and a Cortex Agent for SAP delivery analytics.
-- **[LOGISTICS_AGENT.agent.yaml](cortex_project/LOGISTICS_AGENT.agent.yaml)** — Agent spec for a logistics and delivery performance analyst using `cortex_analyst_text_to_sql`.
 
 ## Prerequisites
 
