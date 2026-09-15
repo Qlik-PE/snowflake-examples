@@ -1,5 +1,38 @@
 # Cortex Code SDK
 
+## Why the Cortex Code Agent SDK
+
+The [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) turns [Snowflake CoCo](https://www.snowflake.com/en/product/features/cortex-code/) from an interactive CLI into a programmable engine for autonomous AI workflows. Your Python or TypeScript code drives the same agentic loop, tools, and Snowflake-native context that power the CoCo CLI and Desktop — without reimplementing tool execution or orchestration.
+
+**What it gives you:**
+
+- **Built-in tools out of the box.** Read/write/edit files, run shell commands, search codebases with glob and grep, and execute SQL against Snowflake — no tool implementation needed.
+- **Data-native context.** Agents are grounded in your Snowflake catalog, lineage, RBAC policies, and compute environment from the first prompt, so generated code references real objects with correct permissions.
+- **Multi-turn sessions.** Maintain conversation context across multiple exchanges with `CortexCodeSDKClient` (Python) or `createCortexCodeSession` (TypeScript). Resume or fork previous sessions.
+- **Structured output.** Force agents to return JSON matching a schema you define, then validate client-side with Pydantic or TypeScript types.
+- **Lifecycle hooks.** Intercept agent behavior at key points (`PreToolUse`, `PostToolUse`, `Stop`) for audit logging, approval gates, or custom routing.
+- **MCP server support.** Connect agents to external systems (Jira, GitHub, Qlik, Salesforce) via the Model Context Protocol.
+- **Model choice.** Select from Claude Opus, Claude Sonnet, and OpenAI GPT models — or use `auto` to let Snowflake pick the best available.
+
+**When to use the SDK vs a SQL Cortex Agent:**
+
+| Use the SDK when you need | Use a SQL agent (`CREATE AGENT`) when you need |
+|---|---|
+| Client-side hooks and audit logging | Zero-infrastructure server-side execution |
+| Pydantic/TypeScript schema validation | `DATA_AGENT_RUN()` from SQL worksheets or Tasks |
+| Custom orchestration logic in Python/TS | REST API integration with any HTTP client |
+| Integration into existing Python apps | Qlik Automate or other no-code triggers |
+
+For a detailed feature-by-feature comparison, see the [SDK vs Cortex Agent table](#sdk-python-vs-cortex-agent-sql--rest-api) below.
+
+**Resources:**
+- [SDK documentation](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) | [Quickstart](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/quickstart) | [Python reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/python-reference) | [TypeScript reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/typescript-reference)
+- [Snowflake CoCo product page](https://www.snowflake.com/en/product/features/cortex-code/)
+- [Coding Agent (code_toolset_all)](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-coding-agent) — the server-side equivalent
+- Local copy of the SDK docs: [cortex-code-agent-sdk-docs.md](cortex-code-agent-sdk-docs.md)
+
+---
+
 Agentic AI examples for Snowflake + Qlik integrations. Every use case is implemented twice — once as a Python SDK agent and once as a SQL `CREATE AGENT` object — so you can choose the approach that fits your architecture.
 
 ## Directory Layout
@@ -7,7 +40,7 @@ Agentic AI examples for Snowflake + Qlik integrations. Every use case is impleme
 ```
 cortex-code-sdk/
 ├── sdk/                # Python agents using the Cortex Code Agent SDK
-│   ├── snowflake_rca_agent.py
+│   ├── rca_agent.py
 │   ├── workload_cost_agent.py
 │   ├── semantic_drift_agent.py
 │   ├── preflight_validator_agent.py
@@ -30,7 +63,7 @@ cortex-code-sdk/
 
 | Use case | SDK (Python) | SQL (CREATE AGENT) |
 |---|---|---|
-| **Failure root-cause analysis** — investigate Snowflake-side failures when a Qlik reload or CDC pipeline errors out | [snowflake_rca_agent.py](sdk/snowflake_rca_agent.py) | [rca-agent.sql](sql/rca-agent.sql) |
+| **Failure root-cause analysis** — investigate Snowflake-side failures when a Qlik reload or CDC pipeline errors out | [rca_agent.py](sdk/rca_agent.py) | [rca-agent.sql](sql/rca-agent.sql) |
 | **Workload cost attribution** — attribute credit consumption to Qlik-originated workloads, recommend optimizations | [workload_cost_agent.py](sdk/workload_cost_agent.py) | [workload-cost-agent.sql](sql/workload-cost-agent.sql) |
 | **Semantic view drift** — compare Qlik Data Product definitions against Snowflake semantic views, produce reconciliation DDL | [semantic_drift_agent.py](sdk/semantic_drift_agent.py) | [semantic-drift-agent.sql](sql/semantic-drift-agent.sql) |
 | **Pipeline pre-flight validation** — check object existence, grants, warehouse state, and dynamic table health before a pipeline runs | [preflight_validator_agent.py](sdk/preflight_validator_agent.py) | [preflight-validator-agent.sql](sql/preflight-validator-agent.sql) |

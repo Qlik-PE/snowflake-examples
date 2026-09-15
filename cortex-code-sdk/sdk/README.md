@@ -30,7 +30,7 @@ The SDK uses the default connection unless you override it in code.
 
 ## Prototypes
 
-### `snowflake_rca_agent.py` — Reload / CDC Failure Root-Cause Investigator
+### `rca_agent.py` — Reload / CDC Failure Root-Cause Investigator
 
 When a Qlik reload or Replicate task fails, this script launches a CoCo agent
 session that investigates the Snowflake side and returns a structured JSON report
@@ -46,7 +46,7 @@ Qlik (webhook / event)
         │
         ▼
 ┌──────────────────────┐
-│  snowflake_rca_agent  │  ← Python script embedding the SDK
+│  rca_agent            │  ← Python script embedding the SDK
 │                      │
 │  1. Receives failure │
 │     context          │
@@ -78,10 +78,10 @@ Qlik (webhook / event)
 
 ```bash
 # Default: investigate all warehouses, last 30 minutes
-python snowflake_rca_agent.py
+python rca_agent.py
 
 # Targeted investigation
-python snowflake_rca_agent.py \
+python rca_agent.py \
     --warehouse QLIK_WH \
     --minutes 60 \
     --error "timeout"

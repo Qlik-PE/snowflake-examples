@@ -11,10 +11,10 @@ returns a structured JSON report with root cause + remediation.
 
 Usage:
     source .venv/bin/activate
-    python snowflake_rca_agent.py
+    python rca_agent.py
 
     # Or pass custom context:
-    python snowflake_rca_agent.py \
+    python rca_agent.py \
         --warehouse QLIK_WH \
         --minutes 60 \
         --error "timeout"

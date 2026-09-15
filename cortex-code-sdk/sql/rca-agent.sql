@@ -2,7 +2,7 @@
 -- Failure Root-Cause Analysis Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/snowflake_rca_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/rca_agent.py.
 --
 -- Investigates Snowflake-side failures when a Qlik reload or CDC pipeline
 -- errors out. Queries QUERY_HISTORY, WAREHOUSE_EVENTS, and other
