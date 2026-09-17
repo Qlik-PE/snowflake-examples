@@ -1,17 +1,17 @@
-# TPCH SF1000 — Cost → Optimize → Cost Walkthrough
+# TPCH SF100 — Cost → Optimize → Cost Walkthrough
 
-End-to-end example that chains the **Workload Cost Attribution** and **SQL Optimizer** agents against `SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000` (6 billion LINEITEM rows). The workflow demonstrates how the Cortex Code Agent SDK can measure the cost of a bad query, optimize it, and then measure the savings.
+End-to-end example that chains the **Workload Cost Attribution** and **SQL Optimizer** agents against `SNOWFLAKE_SAMPLE_DATA.TPCH_SF100` (600 million LINEITEM rows). The workflow demonstrates how the Cortex Code Agent SDK can measure the cost of a bad query, optimize it, and then measure the savings.
 
 ## Dataset
 
 | Table | Row Count |
 |---|---:|
-| LINEITEM | 5,999,989,709 |
-| ORDERS | 1,500,000,000 |
-| PARTSUPP | 800,000,000 |
-| PART | 200,000,000 |
-| CUSTOMER | 150,000,000 |
-| SUPPLIER | 10,000,000 |
+| LINEITEM | 600,037,902 |
+| ORDERS | 150,000,000 |
+| PARTSUPP | 80,000,000 |
+| PART | 20,000,000 |
+| CUSTOMER | 15,000,000 |
+| SUPPLIER | 1,000,000 |
 | NATION | 25 |
 | REGION | 5 |
 
@@ -40,15 +40,15 @@ End-to-end example that chains the **Workload Cost Attribution** and **SQL Optim
 
 ## The Deliberately Bad Query
 
-The query joins five tables from TPCH_SF1000 and is designed with as many anti-patterns as possible so the optimizer has real issues to fix:
+The query joins five tables from TPCH_SF100 and is designed with as many anti-patterns as possible so the optimizer has real issues to fix:
 
 ```sql
 SELECT *
-FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.CUSTOMER c,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS o,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.SUPPLIER s,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.NATION n
+FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER c,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS o,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.SUPPLIER s,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.NATION n
 WHERE o.O_CUSTKEY = c.C_CUSTKEY
   AND l.L_ORDERKEY = o.O_ORDERKEY
   AND s.S_SUPPKEY = l.L_SUPPKEY
@@ -57,19 +57,19 @@ WHERE o.O_CUSTKEY = c.C_CUSTKEY
   AND CAST(o.O_ORDERDATE AS VARCHAR) < '1998-01-01'
   AND o.O_ORDERSTATUS IN (
         SELECT DISTINCT O_ORDERSTATUS
-        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS sub
+        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS sub
         WHERE sub.O_ORDERSTATUS = o.O_ORDERSTATUS
           AND sub.O_TOTALPRICE > 0
         ORDER BY sub.O_ORDERSTATUS
       )
   AND l.L_QUANTITY > (
         SELECT AVG(l2.L_QUANTITY)
-        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l2
+        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l2
         WHERE l2.L_PARTKEY = l.L_PARTKEY
       )
   AND EXISTS (
         SELECT 1
-        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.PARTSUPP ps
+        FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.PARTSUPP ps
         WHERE ps.PS_SUPPKEY = l.L_SUPPKEY
           AND ps.PS_PARTKEY = l.L_PARTKEY
           AND ps.PS_AVAILQTY > 0
@@ -90,11 +90,11 @@ GROUP BY
 HAVING SUM(l.L_EXTENDEDPRICE * (1 - l.L_DISCOUNT)) > 500000
 UNION
 SELECT *
-FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.CUSTOMER c2,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS o2,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l2,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.SUPPLIER s2,
-     SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.NATION n2
+FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER c2,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS o2,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l2,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.SUPPLIER s2,
+     SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.NATION n2
 WHERE o2.O_CUSTKEY = c2.C_CUSTKEY
   AND l2.L_ORDERKEY = o2.O_ORDERKEY
   AND s2.S_SUPPKEY = l2.L_SUPPKEY
@@ -127,13 +127,13 @@ LIMIT 200
 | 1 | **`SELECT *`** | Both branches of UNION | Returns all 44 columns from 5 tables. Forces Snowflake to read every micro-partition column, defeating columnar storage benefits. |
 | 2 | **Implicit comma-join syntax** | `FROM ... c, o, l, s, n` | Old-style join. Harder for both the optimizer and humans to reason about join order. |
 | 3 | **`CAST(O_ORDERDATE AS VARCHAR)`** | `WHERE CAST(o.O_ORDERDATE AS VARCHAR) >= '1997-01-01'` | Wrapping a DATE column in a VARCHAR cast disables partition pruning entirely. Snowflake cannot use the clustering metadata on `O_ORDERDATE` because it is comparing strings, not dates. |
-| 4 | **Correlated subquery (tautological)** | `O_ORDERSTATUS IN (SELECT DISTINCT ... WHERE sub.O_ORDERSTATUS = o.O_ORDERSTATUS ...)` | Scans the entire 1.5B-row ORDERS table per outer row, just to confirm a status value exists — the WHERE clause is a tautology that always matches. |
+| 4 | **Correlated subquery (tautological)** | `O_ORDERSTATUS IN (SELECT DISTINCT ... WHERE sub.O_ORDERSTATUS = o.O_ORDERSTATUS ...)` | Scans the entire 150M-row ORDERS table per outer row, just to confirm a status value exists — the WHERE clause is a tautology that always matches. |
 | 5 | **`ORDER BY` inside a subquery** | `ORDER BY sub.O_ORDERSTATUS` inside the IN subquery | Snowflake must sort intermediate results that will be consumed as a set. The order is discarded by `IN`. |
-| 6 | **Correlated subquery for AVG** | `L_QUANTITY > (SELECT AVG(...) WHERE l2.L_PARTKEY = l.L_PARTKEY)` | Runs an aggregate over the 6B-row LINEITEM table for every row in the outer query. Could be replaced with a window function or a pre-aggregated CTE. |
+| 6 | **Correlated subquery for AVG** | `L_QUANTITY > (SELECT AVG(...) WHERE l2.L_PARTKEY = l.L_PARTKEY)` | Runs an aggregate over the 600M-row LINEITEM table for every row in the outer query. Could be replaced with a window function or a pre-aggregated CTE. |
 | 7 | **`UNION` instead of `UNION ALL`** | Between the two branches | UNION forces a global de-duplication sort across all 44 columns. The two branches query non-overlapping date ranges (1996 vs 1997) so duplicates are impossible. UNION ALL avoids the sort entirely. |
 | 8 | **GROUP BY all 44 columns** | Both branches | Grouping by every column (including the primary key) means each group contains exactly one row. The GROUP BY + HAVING is logically a filter — it would be simpler and faster as a window function or CTE with a pre-aggregated sum. |
 | 9 | **Inconsistent date filtering** | Branch 1: `CAST(... AS VARCHAR) >= '1997-01-01'`; Branch 2: `O_ORDERDATE >= DATE '1996-01-01'` | Branch 2 is already correct with a DATE literal. Branch 1 uses the VARCHAR anti-pattern. Inconsistency makes the UNION less amenable to predicate pushdown. |
-| 10 | **EXISTS without correlation benefit** | `EXISTS (SELECT 1 FROM PARTSUPP ps WHERE ps.PS_SUPPKEY = l.L_SUPPKEY AND ps.PS_PARTKEY = l.L_PARTKEY ...)` | Not the worst anti-pattern, but when combined with the other subqueries, it adds a third correlated probe against the 800M-row PARTSUPP table on each outer row. Could be a semi-join. |
+| 10 | **EXISTS without correlation benefit** | `EXISTS (SELECT 1 FROM PARTSUPP ps WHERE ps.PS_SUPPKEY = l.L_SUPPKEY AND ps.PS_PARTKEY = l.L_PARTKEY ...)` | Not the worst anti-pattern, but when combined with the other subqueries, it adds a third correlated probe against the 80M-row PARTSUPP table on each outer row. Could be a semi-join. |
 
 ## SDK Patterns Used
 
@@ -202,7 +202,7 @@ When the SQL Optimizer agent processes this query, it should identify and fix th
 pip install cortex-code-agent-sdk pydantic
 ```
 
-Cortex Code CLI must be authenticated against a Snowflake account with access to `SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000`.
+Cortex Code CLI must be authenticated against a Snowflake account with access to `SNOWFLAKE_SAMPLE_DATA.TPCH_SF100`.
 
 ### Execute
 
@@ -220,12 +220,12 @@ The script produces console output for each step:
 
 ```
 ============================================================
-  TPCH SF1000 — Cost → Optimize → Cost Workflow
+  TPCH SF100 — Cost → Optimize → Cost Workflow
 ============================================================
 
   Warehouse: COMPUTE_WH
-  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000
-  LINEITEM:  ~6 billion rows
+  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF100
+  LINEITEM:  ~600 million rows
 
 ############################################################
 # STEP 1: Execute the original (unoptimized) query
@@ -340,3 +340,138 @@ The script produces console output for each step:
 | Pydantic validation | `CostReport`, `OptimizationReport` |
 | EXPLAIN plan analysis | Optimizer turn 1 |
 | Multi-turn option switching | Optimizer (turn 1 no schema → turn 2 with schema) |
+
+---
+
+## Execution Results
+
+Executed on **2026-09-17** against `SNOWFLAKE_SAMPLE_DATA.TPCH_SF100` using warehouse `COMPUTE` (Small, 1 node). Result cache was disabled (`USE_CACHED_RESULT = FALSE`) for both runs.
+
+### Side-by-Side Comparison
+
+| Metric | BEFORE (bad query) | AFTER (optimized) | Delta |
+|---|---:|---:|---:|
+| **Total elapsed time** | 87.28 s | 61.38 s | **-29.7%** |
+| **Execution time** | 84.65 s | 59.19 s | **-30.1%** |
+| **Compilation time** | 2.63 s | 2.19 s | -16.7% |
+| **Data scanned** | 40.26 GB | 37.06 GB | **-7.9%** |
+| **Rows produced** | 0 | 200 | — |
+| **Cloud services credits** | 0.000404 | 0.000340 | **-15.8%** |
+
+### Query IDs
+
+| | Query ID |
+|---|---|
+| Bad query | `01c72317-051e-d526-0000-1ea9050dcf92` |
+| Optimized query | `01c72319-051e-cecc-0000-1ea9050df476` |
+
+### Key Observations
+
+**1. 30% execution time reduction.**
+The optimized query ran in 59.2 s vs 84.7 s. The primary drivers are:
+- Eliminating the correlated AVG subquery (replaced with a pre-aggregated CTE `avg_qty` joined once)
+- Removing the tautological correlated IN subquery entirely
+- Converting the EXISTS to an INNER JOIN against a pre-filtered CTE `available_parts`
+
+**2. 8% less data scanned (40.26 GB → 37.06 GB).**
+Modest because Snowflake's columnar engine already prunes unused columns at the micro-partition level. The improvement comes from:
+- Removing the redundant second scan of ORDERS in the correlated IN subquery
+- Using `UNION ALL` semantics (the optimizer recognized the disjoint date ranges, but still saved the dedup sort overhead)
+- Merging the two UNION branches into a single scan with `WHERE O_ORDERDATE >= '1996-01-01' AND O_ORDERDATE < '1998-01-01'`
+
+**3. The bad query had a semantic bug.**
+The bad query returned **0 rows** while the optimized query returned **200 rows**. This is not a coincidence — it's a direct consequence of anti-pattern #8 (GROUP BY all 44 columns):
+- **Bad query:** GROUP BY includes the primary key columns (`O_ORDERKEY`, `L_LINENUMBER`), so each "group" is a single lineitem row. `SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` per group is the revenue of *one line item*, which almost never exceeds $500,000.
+- **Optimized query:** Uses `SUM(...) OVER (PARTITION BY O_ORDERKEY)` to correctly aggregate all line items per order. Orders with total revenue > $500,000 are common.
+
+This demonstrates that anti-pattern analysis isn't just about performance — it catches correctness bugs that silently return wrong results.
+
+**4. Snowflake's optimizer is resilient.**
+Despite 10 embedded anti-patterns, Snowflake decorrelated the subqueries and pushed down predicates where it could. The `CAST(O_ORDERDATE AS VARCHAR)` was the one anti-pattern the optimizer could *not* see through, since the type conversion is explicit and must be honored. Native DATE comparisons in the optimized version enable proper partition pruning.
+
+### Optimizations Applied
+
+| # | Optimization | Category | Impact |
+|---|---|---|---|
+| 1 | `SELECT *` → explicit column list (26 columns vs 44) | pruning | Medium |
+| 2 | Comma-join → ANSI `INNER JOIN ... ON` | join | Low (readability) |
+| 3 | `CAST(O_ORDERDATE AS VARCHAR)` → native `DATE` literal | type_cast | **High** |
+| 4 | Tautological correlated IN subquery → eliminated | subquery | **High** |
+| 5 | `ORDER BY` inside IN subquery → eliminated | sort | Medium |
+| 6 | Correlated AVG subquery → CTE `avg_qty` with `INNER JOIN` | subquery | **High** |
+| 7 | `EXISTS (PARTSUPP)` → CTE `available_parts` with `INNER JOIN` | subquery | Medium |
+| 8 | `UNION` → `UNION ALL` (merged into single date range) | anti_pattern | **High** |
+| 9 | GROUP BY all 44 cols + HAVING → window function + WHERE | aggregation | **High** (fixes bug) |
+| 10 | Two branches with disjoint dates → single `WHERE ... BETWEEN` | predicate | Medium |
+
+### Optimized Query
+
+```sql
+WITH avg_qty AS (
+  SELECT
+    L_PARTKEY,
+    AVG(L_QUANTITY) AS avg_quantity
+  FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM
+  GROUP BY L_PARTKEY
+),
+available_parts AS (
+  SELECT DISTINCT
+    PS_SUPPKEY,
+    PS_PARTKEY
+  FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.PARTSUPP
+  WHERE PS_AVAILQTY > 0
+),
+base AS (
+  SELECT
+    c.C_CUSTKEY,
+    c.C_NAME,
+    c.C_NATIONKEY,
+    c.C_ACCTBAL,
+    c.C_MKTSEGMENT,
+    o.O_ORDERKEY,
+    o.O_ORDERSTATUS,
+    o.O_TOTALPRICE,
+    o.O_ORDERDATE,
+    o.O_ORDERPRIORITY,
+    o.O_CLERK,
+    l.L_PARTKEY,
+    l.L_SUPPKEY,
+    l.L_LINENUMBER,
+    l.L_QUANTITY,
+    l.L_EXTENDEDPRICE,
+    l.L_DISCOUNT,
+    l.L_TAX,
+    l.L_RETURNFLAG,
+    l.L_LINESTATUS,
+    l.L_SHIPDATE,
+    l.L_SHIPMODE,
+    s.S_NAME,
+    s.S_NATIONKEY,
+    n.N_NAME AS nation_name,
+    SUM(l.L_EXTENDEDPRICE * (1 - l.L_DISCOUNT))
+      OVER (PARTITION BY o.O_ORDERKEY) AS order_revenue
+  FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS o
+    INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER c
+      ON c.C_CUSTKEY = o.O_CUSTKEY
+    INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l
+      ON l.L_ORDERKEY = o.O_ORDERKEY
+    INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.SUPPLIER s
+      ON s.S_SUPPKEY = l.L_SUPPKEY
+    INNER JOIN SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.NATION n
+      ON n.N_NATIONKEY = s.S_NATIONKEY
+    INNER JOIN avg_qty aq
+      ON aq.L_PARTKEY = l.L_PARTKEY
+    INNER JOIN available_parts ap
+      ON ap.PS_SUPPKEY = l.L_SUPPKEY
+     AND ap.PS_PARTKEY = l.L_PARTKEY
+  WHERE o.O_ORDERDATE >= DATE '1996-01-01'
+    AND o.O_ORDERDATE <  DATE '1998-01-01'
+    AND o.O_TOTALPRICE > 0
+    AND l.L_QUANTITY > aq.avg_quantity
+)
+SELECT *
+FROM base
+WHERE order_revenue > 500000
+ORDER BY C_CUSTKEY, O_ORDERKEY
+LIMIT 200;
+```

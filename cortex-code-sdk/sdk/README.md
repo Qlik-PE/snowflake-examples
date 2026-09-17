@@ -672,4 +672,4 @@ These are candidates for future prototypes, ordered by integration effort:
 
 | Example | Agents chained | Script |
 |---|---|---|
-| [TPCH SF1000 Cost → Optimize → Cost](../tpch-cost-optimization-walkthrough.md) | Workload Cost + SQL Optimizer | [tpch_cost_optimize_example.py](tpch_cost_optimize_example.py) |
+| [TPCH SF100 Cost → Optimize → Cost](../tpch-cost-optimization-walkthrough.md) | Workload Cost + SQL Optimizer | [tpch_cost_optimize_example.py](tpch_cost_optimize_example.py) |

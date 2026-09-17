@@ -82,7 +82,7 @@ cortex-code-sdk/
 
 | Example | Description |
 |---|---|
-| [TPCH SF1000 Cost → Optimize → Cost](tpch-cost-optimization-walkthrough.md) | Chains the Workload Cost and SQL Optimizer agents against a 6B-row dataset. Executes a deliberately anti-pattern-heavy query, measures cost, optimizes with the SDK, re-measures, and compares. Script: [tpch_cost_optimize_example.py](sdk/tpch_cost_optimize_example.py) |
+| [TPCH SF100 Cost → Optimize → Cost](tpch-cost-optimization-walkthrough.md) | Chains the Workload Cost and SQL Optimizer agents against a 600M-row dataset. Executes a deliberately anti-pattern-heavy query, measures cost, optimizes with the SDK, re-measures, and compares. Script: [tpch_cost_optimize_example.py](sdk/tpch_cost_optimize_example.py) |
 
 ## SDK (Python) vs Cortex Agent (SQL + REST API)
 

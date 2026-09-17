@@ -1,8 +1,8 @@
 """
-TPCH SF1000 Cost-Optimize-Cost Workflow
+TPCH SF100 Cost-Optimize-Cost Workflow
 ========================================
 End-to-end demonstration that chains the Workload Cost Attribution and SQL
-Optimizer agents against SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000 (6 billion rows).
+Optimizer agents against SNOWFLAKE_SAMPLE_DATA.TPCH_SF100 (600 million rows).
 
 Workflow:
   1. Execute a deliberately complex, anti-pattern-heavy query.
@@ -36,11 +36,11 @@ from cortex_code_agent_sdk import (
 
 BAD_QUERY = textwrap.dedent("""\
     SELECT *
-    FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.CUSTOMER c,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS o,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.SUPPLIER s,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.NATION n
+    FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER c,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS o,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.SUPPLIER s,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.NATION n
     WHERE o.O_CUSTKEY = c.C_CUSTKEY
       AND l.L_ORDERKEY = o.O_ORDERKEY
       AND s.S_SUPPKEY = l.L_SUPPKEY
@@ -49,19 +49,19 @@ BAD_QUERY = textwrap.dedent("""\
       AND CAST(o.O_ORDERDATE AS VARCHAR) < '1998-01-01'
       AND o.O_ORDERSTATUS IN (
             SELECT DISTINCT O_ORDERSTATUS
-            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS sub
+            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS sub
             WHERE sub.O_ORDERSTATUS = o.O_ORDERSTATUS
               AND sub.O_TOTALPRICE > 0
             ORDER BY sub.O_ORDERSTATUS
           )
       AND l.L_QUANTITY > (
             SELECT AVG(l2.L_QUANTITY)
-            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l2
+            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l2
             WHERE l2.L_PARTKEY = l.L_PARTKEY
           )
       AND EXISTS (
             SELECT 1
-            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.PARTSUPP ps
+            FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.PARTSUPP ps
             WHERE ps.PS_SUPPKEY = l.L_SUPPKEY
               AND ps.PS_PARTKEY = l.L_PARTKEY
               AND ps.PS_AVAILQTY > 0
@@ -82,11 +82,11 @@ BAD_QUERY = textwrap.dedent("""\
     HAVING SUM(l.L_EXTENDEDPRICE * (1 - l.L_DISCOUNT)) > 500000
     UNION
     SELECT *
-    FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.CUSTOMER c2,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.ORDERS o2,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.LINEITEM l2,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.SUPPLIER s2,
-         SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000.NATION n2
+    FROM SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.CUSTOMER c2,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.ORDERS o2,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.LINEITEM l2,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.SUPPLIER s2,
+         SNOWFLAKE_SAMPLE_DATA.TPCH_SF100.NATION n2
     WHERE o2.O_CUSTKEY = c2.C_CUSTKEY
       AND l2.L_ORDERKEY = o2.O_ORDERKEY
       AND s2.S_SUPPKEY = l2.L_SUPPKEY
@@ -364,11 +364,11 @@ Report the QUERY_ID and basic execution stats.
 
 async def run(warehouse: str) -> None:
     print("=" * 60)
-    print("  TPCH SF1000 — Cost → Optimize → Cost Workflow")
+    print("  TPCH SF100 — Cost → Optimize → Cost Workflow")
     print("=" * 60)
     print(f"\n  Warehouse: {warehouse}")
-    print(f"  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF1000")
-    print(f"  LINEITEM:  ~6 billion rows\n")
+    print(f"  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF100")
+    print(f"  LINEITEM:  ~600 million rows\n")
 
     # Step 1 — Execute the bad query
     print("\n" + "#" * 60)
@@ -465,7 +465,7 @@ async def run(warehouse: str) -> None:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="TPCH SF1000 cost-optimize-cost workflow"
+        description="TPCH SF100 cost-optimize-cost workflow"
     )
     parser.add_argument(
         "--warehouse", default="COMPUTE_WH",
