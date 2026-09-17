@@ -667,3 +667,9 @@ These are candidates for future prototypes, ordered by integration effort:
 | Data freshness SLA monitoring | Qlik pipelines are always on time, with evidence | Medium | **Done** |
 | Access audit / least-privilege | Every service account is least-privilege, with evidence | Medium | **Done** |
 | Agent fleet delegation | Every Qlik agent is better on Snowflake | High | Candidate |
+
+## End-to-end walkthroughs
+
+| Example | Agents chained | Script |
+|---|---|---|
+| [TPCH SF1000 Cost → Optimize → Cost](../tpch-cost-optimization-walkthrough.md) | Workload Cost + SQL Optimizer | [tpch_cost_optimize_example.py](tpch_cost_optimize_example.py) |

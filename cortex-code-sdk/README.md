@@ -78,6 +78,12 @@ cortex-code-sdk/
 | **Access audit / least-privilege** — identify over-privileged roles, unused grants, and access anomalies | [access_audit_agent.py](sdk/access_audit_agent.py) | [access-audit-agent.sql](sql/access-audit-agent.sql) |
 | **Document intelligence** — parse, extract, classify, and answer questions about documents using Cortex AI functions | — | [doc-intelligence-agent.sql](sql/doc-intelligence-agent.sql) |
 
+### End-to-end walkthrough
+
+| Example | Description |
+|---|---|
+| [TPCH SF1000 Cost → Optimize → Cost](tpch-cost-optimization-walkthrough.md) | Chains the Workload Cost and SQL Optimizer agents against a 6B-row dataset. Executes a deliberately anti-pattern-heavy query, measures cost, optimizes with the SDK, re-measures, and compares. Script: [tpch_cost_optimize_example.py](sdk/tpch_cost_optimize_example.py) |
+
 ## SDK (Python) vs Cortex Agent (SQL + REST API)
 
 | | SDK (Python) | Cortex Agent (SQL + REST API) |
