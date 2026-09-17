@@ -20,7 +20,7 @@ End-to-end example that chains the **Workload Cost Attribution** and **SQL Optim
 ```
 ┌──────────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
 │  Step 1              │     │  Step 3              │     │  Step 4              │
-│  Execute BAD query   │────▶│  SQL Optimizer agent │────▶│  Execute GOOD query  │
+│  Execute BAD query   │───▶│  SQL Optimizer agent │────▶│  Execute GOOD query  │
 │  → capture query_id  │     │  → rewrite + report  │     │  → capture query_id  │
 └──────────┬───────────┘     └──────────────────────┘     └──────────┬───────────┘
            │                                                         │
