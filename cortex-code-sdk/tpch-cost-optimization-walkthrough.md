@@ -19,22 +19,22 @@ End-to-end example that chains the **Workload Cost Attribution** and **SQL Optim
 
 ```
 ┌──────────────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
-│  Step 1               │     │  Step 3               │     │  Step 4               │
-│  Execute BAD query    │────▶│  SQL Optimizer agent  │────▶│  Execute GOOD query   │
-│  → capture query_id   │     │  → rewrite + report   │     │  → capture query_id   │
+│  Step 1              │     │  Step 3              │     │  Step 4              │
+│  Execute BAD query   │────▶│  SQL Optimizer agent │────▶│  Execute GOOD query  │
+│  → capture query_id  │     │  → rewrite + report  │     │  → capture query_id  │
 └──────────┬───────────┘     └──────────────────────┘     └──────────┬───────────┘
            │                                                         │
            ▼                                                         ▼
 ┌──────────────────────┐                               ┌──────────────────────┐
-│  Step 2               │                               │  Step 5               │
-│  Workload Cost agent  │                               │  Workload Cost agent  │
-│  → BEFORE report      │                               │  → AFTER report       │
+│  Step 2              │                               │  Step 5              │
+│  Workload Cost agent │                               │  Workload Cost agent │
+│  → BEFORE report     │                               │  → AFTER report      │
 └──────────────────────┘                               └──────────────────────┘
                                                                     │
                                                                     ▼
                                                        ┌──────────────────────┐
-                                                       │  Step 6               │
-                                                       │  Compare BEFORE/AFTER │
+                                                       │  Step 6              │
+                                                       │  Compare BEFORE/AFTER│
                                                        └──────────────────────┘
 ```
 
