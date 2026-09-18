@@ -154,128 +154,12 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
--- 4e. List Qlik Spaces (GET /api/v1/spaces)
-CREATE OR REPLACE PROCEDURE LIST_QLIK_SPACES()
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'list_spaces'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
-AS
-$$
-import _snowflake
-import requests
-
-def list_spaces(session):
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/spaces'
-    headers = {'Authorization': f'Bearer {api_key}'}
-    resp = requests.get(url, headers=headers)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
-
--- 4f. Create Qlik Glossary (POST /api/v1/glossaries)
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_GLOSSARY(
-  NAME VARCHAR,
-  DESCRIPTION VARCHAR DEFAULT ''
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'create_glossary'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
-AS
-$$
-import _snowflake
-import requests
-
-def create_glossary(session, name, description=''):
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/glossaries'
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    body = {'name': name}
-    if description:
-        body['description'] = description
-    resp = requests.post(url, headers=headers, json=body)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
-
--- 4g. Create Qlik Glossary Term (POST /api/v1/glossaries/{id}/terms)
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_GLOSSARY_TERM(
-  GLOSSARY_ID VARCHAR,
-  NAME VARCHAR,
-  DESCRIPTION VARCHAR DEFAULT ''
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'create_term'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
-AS
-$$
-import _snowflake
-import requests
-
-def create_term(session, glossary_id, name, description=''):
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
-    url = f'https://{tenant}/api/v1/glossaries/{glossary_id}/terms'
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    body = {'name': name}
-    if description:
-        body['description'] = description
-    resp = requests.post(url, headers=headers, json=body)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
-
--- 4h. Create Qlik Data Product (POST /api/v1/data-products)
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATA_PRODUCT(
-  NAME VARCHAR,
-  DESCRIPTION VARCHAR DEFAULT '',
-  SPACE_ID VARCHAR DEFAULT NULL
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'create_data_product'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
-AS
-$$
-import _snowflake
-import requests
-
-def create_data_product(session, name, description='', space_id=None):
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/data-products'
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    body = {'name': name}
-    if description:
-        body['description'] = description
-    if space_id:
-        body['spaceId'] = space_id
-    resp = requests.post(url, headers=headers, json=body)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
+-- NOTE: The following Qlik operations are handled by the Qlik MCP server
+-- registered in CoCo, not by stored procedures:
+--   - List spaces:           mcp__qlik-local__spaces__list
+--   - Create glossary:       mcp__qlik-local__glossaries__create
+--   - Create glossary term:  mcp__qlik-local__glossaries__create_term
+--   - Create data product:   mcp__qlik-local__data_products__create
 
 -- =============================================================================
 -- 5. Upload Skill to Stage
@@ -303,8 +187,10 @@ models:
 instructions:
   response: >
     You are an agent that interacts with the Qlik Cloud REST API and Snowflake.
-    You can create Qlik apps, register data sets, set app load scripts, list spaces,
-    create glossaries and terms, create data products, and inspect Snowflake semantic views.
+    You can create Qlik apps, register data sets, set app load scripts, and inspect
+    Snowflake semantic views via procedure-backed tools. Additional Qlik operations
+    (list spaces, create glossaries/terms, create data products) are available via
+    the Qlik MCP server registered in CoCo.
     When asked to create a data product from a semantic view, load and follow the
     create_data_product_from_sv skill step by step.
   orchestration: >
@@ -368,61 +254,6 @@ tools:
             type: string
             description: "Fully qualified semantic view name"
         required: [SEMANTIC_VIEW_NAME]
-  - tool_spec:
-      type: generic
-      name: list_qlik_spaces
-      description: "Lists all available Qlik Cloud spaces via GET /api/v1/spaces"
-      input_schema:
-        type: object
-        properties: {}
-  - tool_spec:
-      type: generic
-      name: create_qlik_glossary
-      description: "Creates a new glossary in Qlik via POST /api/v1/glossaries"
-      input_schema:
-        type: object
-        properties:
-          NAME:
-            type: string
-            description: "Glossary name"
-          DESCRIPTION:
-            type: string
-            description: "Glossary description (optional)"
-        required: [NAME]
-  - tool_spec:
-      type: generic
-      name: create_qlik_glossary_term
-      description: "Creates a term in a Qlik glossary via POST /api/v1/glossaries/{id}/terms"
-      input_schema:
-        type: object
-        properties:
-          GLOSSARY_ID:
-            type: string
-            description: "The glossary ID"
-          NAME:
-            type: string
-            description: "Term name"
-          DESCRIPTION:
-            type: string
-            description: "Term description (optional)"
-        required: [GLOSSARY_ID, NAME]
-  - tool_spec:
-      type: generic
-      name: create_qlik_data_product
-      description: "Creates a data product in Qlik via POST /api/v1/data-products"
-      input_schema:
-        type: object
-        properties:
-          NAME:
-            type: string
-            description: "Data product name"
-          DESCRIPTION:
-            type: string
-            description: "Description (optional)"
-          SPACE_ID:
-            type: string
-            description: "Target space ID (optional)"
-        required: [NAME]
 tool_resources:
   create_qlik_app:
     type: procedure
@@ -445,30 +276,6 @@ tool_resources:
   get_semantic_view_ddl:
     type: procedure
     identifier: GET_SEMANTIC_VIEW_DDL
-    execution_environment:
-      type: warehouse
-      warehouse: COMPUTE
-  list_qlik_spaces:
-    type: procedure
-    identifier: LIST_QLIK_SPACES
-    execution_environment:
-      type: warehouse
-      warehouse: COMPUTE
-  create_qlik_glossary:
-    type: procedure
-    identifier: CREATE_QLIK_GLOSSARY
-    execution_environment:
-      type: warehouse
-      warehouse: COMPUTE
-  create_qlik_glossary_term:
-    type: procedure
-    identifier: CREATE_QLIK_GLOSSARY_TERM
-    execution_environment:
-      type: warehouse
-      warehouse: COMPUTE
-  create_qlik_data_product:
-    type: procedure
-    identifier: CREATE_QLIK_DATA_PRODUCT
     execution_environment:
       type: warehouse
       warehouse: COMPUTE

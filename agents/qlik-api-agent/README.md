@@ -21,16 +21,25 @@ Cortex Agent (QLIK_API_AGENT)
 
 ## Tools
 
+### Agent tools (stored procedures via EAI)
+
 | Tool | Procedure | Qlik API Endpoint |
 |------|-----------|-------------------|
 | `create_qlik_app` | `CREATE_QLIK_APP` | `POST /api/v1/apps` |
 | `create_qlik_dataset` | `CREATE_QLIK_DATASET` | `POST /api/v1/data-sets` |
 | `set_qlik_app_script` | `SET_QLIK_APP_SCRIPT` | `POST /api/v1/apps/{appId}/scripts` |
-| `list_qlik_spaces` | `LIST_QLIK_SPACES` | `GET /api/v1/spaces` |
-| `create_qlik_glossary` | `CREATE_QLIK_GLOSSARY` | `POST /api/v1/glossaries` |
-| `create_qlik_glossary_term` | `CREATE_QLIK_GLOSSARY_TERM` | `POST /api/v1/glossaries/{id}/terms` |
-| `create_qlik_data_product` | `CREATE_QLIK_DATA_PRODUCT` | `POST /api/v1/data-products` |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL()` |
+
+### CoCo MCP tools (Qlik MCP server)
+
+These are provided by the Qlik MCP server registered in CoCo and used by the skill workflow:
+
+| MCP Tool | Qlik API Endpoint |
+|----------|-------------------|
+| `mcp__qlik-local__spaces__list` | `GET /api/v1/spaces` |
+| `mcp__qlik-local__glossaries__create` | `POST /api/v1/glossaries` |
+| `mcp__qlik-local__glossaries__create_term` | `POST /api/v1/glossaries/{id}/terms` |
+| `mcp__qlik-local__data_products__create` | `POST /api/v1/data-products` |
 
 ## Skills
 
@@ -42,6 +51,7 @@ Cortex Agent (QLIK_API_AGENT)
 
 - Snowflake account with ACCOUNTADMIN role
 - Qlik Cloud tenant with a valid API key
+- Qlik MCP server registered in CoCo (for spaces, glossaries, data products)
 - Warehouse for procedure execution
 
 ## Setup

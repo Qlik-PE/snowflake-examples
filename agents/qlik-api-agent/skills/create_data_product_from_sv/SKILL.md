@@ -10,7 +10,7 @@ Follow these steps **in order**. Do NOT skip steps.
 ### Step 1: Gather inputs
 
 1. The user should provide the **fully qualified Semantic View name** (e.g. `DB.SCHEMA.MY_VIEW`). If not provided, ask for it.
-2. Call `list_qlik_spaces` (no arguments) to list all available Qlik spaces.
+2. Call `mcp__qlik-local__spaces__list` to list all available Qlik spaces.
 3. Present the spaces to the user and ask them to **choose a target space** for the data product.
 4. Store the chosen `spaceId` and `spaceName`.
 
@@ -71,21 +71,21 @@ Collect all returned dataset IDs.
 
 ### Step 5: Create a Glossary with documentation
 
-1. Call `create_qlik_glossary` with:
-   - `NAME`: "Glossary - <semantic_view_short_name>"
-   - `DESCRIPTION`: "Business glossary auto-generated from Snowflake Semantic View <semantic_view_name>"
+1. Call `mcp__qlik-local__glossaries__create` with:
+   - `name`: "Glossary - <semantic_view_short_name>"
+   - `description`: "Business glossary auto-generated from Snowflake Semantic View <semantic_view_name>"
 2. Capture the glossary ID from the response.
-3. For each column/measure/dimension from the semantic view that has a description, call `create_qlik_glossary_term` with:
-   - `GLOSSARY_ID`: the glossary ID
-   - `NAME`: the column/measure/dimension name
-   - `DESCRIPTION`: the description from the semantic view DDL
+3. For each column/measure/dimension from the semantic view that has a description, call `mcp__qlik-local__glossaries__create_term` with:
+   - `glossaryId`: the glossary ID
+   - `name`: the column/measure/dimension name
+   - `description`: the description from the semantic view DDL
 
 ### Step 6: Create the Data Product
 
-1. Call `create_qlik_data_product` with:
-   - `NAME`: "<semantic_view_short_name> Data Product"
-   - `DESCRIPTION`: "Data product from Snowflake Semantic View <semantic_view_name>. Contains <N> datasets and a business glossary."
-   - `SPACE_ID`: the spaceId from Step 1
+1. Call `mcp__qlik-local__data_products__create` with:
+   - `name`: "<semantic_view_short_name> Data Product"
+   - `description`: "Data product from Snowflake Semantic View <semantic_view_name>. Contains <N> datasets and a business glossary."
+   - `spaceId`: the spaceId from Step 1
 2. Capture the dataProductId.
 
 ### Step 7: Summary
