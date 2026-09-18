@@ -1,35 +1,48 @@
 ---
 name: create_data_product_from_sv
-description: Creates a Qlik Data Product from a Snowflake Semantic View. Validates prerequisites, registers datasets, creates a glossary, creates and links the data product, and verifies the result.
+description: Creates a Qlik Data Product from a Snowflake Semantic View. Validates prerequisites (auto-creates data asset if needed), registers datasets, creates a glossary, creates and links the data product, and verifies the result.
 ---
 
 ## Workflow: Create Qlik Data Product from Snowflake Semantic View
 
 Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to the next step if the current step fails -- follow the rollback instructions instead.
 
+Track all artifacts created during this run in a list: `created_artifacts = []`. This list is used for rollback.
+
 ### Step 0: Validate prerequisites
 
 1. The user should provide:
    - The **fully qualified Semantic View name** (e.g. `DB.SCHEMA.MY_VIEW`). If not provided, ask.
    - The **Snowflake connection ID or name** in Qlik (e.g. `fe1bdad2-5b26-466a-b648-778258586334`). If not provided, ask.
-2. Call `mcp__qlik-local__spaces__list` to list available Qlik spaces. Present them and ask the user to **choose a target space**.
-3. **Validate the connection exists in Qlik**: Call `mcp__qlik-local__catalog__search` with `query` set to the connection name/ID and `resourceType` set to `connection`.
-   - If the connection is NOT found: **STOP**. Tell the user the Snowflake connection is not registered in Qlik Cloud. They must create it first via Qlik Management Console.
-   - If found: extract the connection `id` (this is the UUID to use as `dataAssetInfo.id` in Step 3).
-4. **Validate the data asset is onboarded**: Call `mcp__qlik-local__catalog__search` with `query` set to the connection name and `resourceType` set to `dataasset`.
-   - If the data asset is NOT found: **auto-create it** by calling `create_qlik_data_asset` with:
-     - `APP_TYPE`: "Snowflake"
-     - `DATASTORE_ID`: the connection UUID from step 3
-     - `DATASTORE_TECHNICAL_NAME`: the connection technical name from step 3
-     - `NAME`: "Snowflake - <connection_name>"
-     - `DESCRIPTION`: "Auto-registered data asset for Snowflake connection <connection_id>"
-     - `SPACE_ID`: the spaceId from step 2
-   - If `create_qlik_data_asset` returns 201: extract the `dataAssetId` from the response. Continue.
-   - If `create_qlik_data_asset` fails: **STOP**. Report the error -- the connection may not support data asset registration.
-   - If the data asset already exists: extract the `dataAssetId`.
-5. Store: `spaceId`, `spaceName`, `connectionId`, `dataAssetId`, `semanticViewName`.
 
-**GATE**: All 5 values captured. If any validation failed, STOP here.
+2. Call `mcp__qlik-local__spaces__list` to list available Qlik spaces. Present them and ask the user to **choose a target space**. Store `spaceId` and `spaceName`.
+
+3. **Validate the connection exists in Qlik**: Call `mcp__qlik-local__catalog__search` with `query` set to the connection name/ID and `resourceType` set to `connection`.
+   - If NOT found: **STOP**. Tell the user the Snowflake connection is not registered in Qlik Cloud.
+   - If found: extract and store:
+     - `connectionId`: the connection UUID
+     - `connectionTechnicalName`: the `technicalName` field from the connection result
+     - `connectorType`: the `dataSourceId` or `type` field (e.g. `"Snowflake"`, `"qix-snowflake"`) -- this becomes `APP_TYPE`
+
+4. **Validate / provision the data asset**:
+   a. Call `mcp__qlik-local__catalog__search` with `query` set to the connection technical name and `resourceType` set to `dataasset`.
+   b. **If found**: extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`.
+   c. **If NOT found**: auto-create by calling `create_qlik_data_asset` with:
+      - `APP_TYPE`: the `connectorType` extracted from step 3 (e.g. `"Snowflake"`)
+      - `DATASTORE_ID`: the `connectionId` from step 3
+      - `DATASTORE_TECHNICAL_NAME`: the `connectionTechnicalName` from step 3
+      - `NAME`: the database name from the semantic view (e.g. `"CORTEX_DEMOS"`)
+      - `DESCRIPTION`: `"Auto-registered data asset for semantic view <semantic_view_name>"`
+      - `SPACE_ID`: the `spaceId` from step 2
+   d. Check the response:
+      - **201 (Created)**: extract `dataAssetId` from response. Store `dataAssetSource = "created-this-run"`. Add to `created_artifacts`.
+      - **409 (Conflict / already exists)**: the data asset was created concurrently. Re-search the catalog (repeat step 4a) and extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`.
+      - **Other error**: **STOP**. Report the error.
+   e. **Confirm persistence**: Re-search the catalog for the `dataAssetId` to verify it was persisted. If not found after creation, **STOP**.
+
+5. Store final values: `spaceId`, `spaceName`, `connectionId`, `connectionTechnicalName`, `dataAssetId`, `dataAssetSource`, `semanticViewName`.
+
+**GATE 0**: All values captured. `dataAssetId` MUST be present and MUST NOT be the same as `connectionId` -- they are different Qlik objects. If any validation failed, STOP here.
 
 ### Step 1: Inspect the Semantic View
 
@@ -41,13 +54,15 @@ Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to t
    - All **descriptions** from `comment=` clauses
    - All **metrics** definitions
 3. For **each base table**, call `get_table_columns` with the table's `DATABASE_NAME`, `SCHEMA_NAME`, and `TABLE_NAME` (unquoted) to get actual column types with precision/scale.
-   - If `get_table_columns` returns empty (table doesn't exist or no access): **STOP**. Report which table is missing -- the semantic view may reference deleted tables.
-4. Present to the user for confirmation:
+   - If `get_table_columns` returns empty (table doesn't exist or no access): **STOP**. Report which table is missing.
+4. **Pre-validate DECIMAL fields**: scan all columns from `get_table_columns`. For any column where `data_type` = `NUMBER` and `numeric_scale` > 0, verify that `numeric_precision` and `numeric_scale` are both non-null. If either is null, default to `precision=38, scale=0` and treat as `INTEGER`.
+5. Present to the user for confirmation:
    - List of base tables with column count
    - Any columns with descriptions
+   - Any DECIMAL fields with their precision/scale
    - Ask: "Proceed with creating <N> datasets?"
 
-**GATE**: User confirmed. All tables resolved with column types.
+**GATE 1**: User confirmed. All tables resolved with column types. All DECIMAL fields have valid precision/scale.
 
 ### Step 2: Create Qlik Datasets (one per base table)
 
@@ -66,30 +81,26 @@ For **each base table**, call `create_qlik_dataset` with BODY as a JSON string:
   "secureQri": "qdf:<connectionId>:<spaceId>:<fully_qualified_table_name>",
   "dataAssetInfo": {
     "id": "<dataAssetId>",
-    "technicalName": "<connection_technical_name>",
+    "technicalName": "<connectionTechnicalName>",
     "dataStoreInfo": {
       "id": "<dataAssetId>",
-      "technicalName": "<connection_technical_name>"
+      "technicalName": "<connectionTechnicalName>"
     }
   },
   "schema": {
-    "dataFields": [
-      {
-        "name": "<COLUMN_NAME>",
-        "dataType": {
-          "type": "<mapped_type>",
-          "properties": {"precision": N, "scale": N}
-        }
-      }
-    ]
+    "dataFields": [ ... ]
   }
 }
 ```
 
+**CRITICAL**: `dataAssetInfo.id` and `dataStoreInfo.id` MUST use the `dataAssetId` from Step 0.4 -- NEVER the `connectionId`.
+
+**DECIMAL validation rule**: Every field with `dataType.type` = `DECIMAL` MUST include `properties: {"precision": N, "scale": N}` where both values are integers > 0. If precision or scale is missing/null from `get_table_columns`, use `precision=38, scale=0` and map to `INTEGER` instead. Validate this BEFORE sending the request.
+
 Type mapping from `get_table_columns` results:
 - TEXT/VARCHAR/STRING/CHAR → `STRING`
-- NUMBER with numeric_scale=0 → `INTEGER`
-- NUMBER with numeric_scale>0 → `DECIMAL` (include `properties: {precision, scale}`)
+- NUMBER with numeric_scale=0 or null → `INTEGER`
+- NUMBER with numeric_scale>0 AND both precision/scale non-null → `DECIMAL` (include `properties: {precision, scale}`)
 - FLOAT/DOUBLE/REAL → `DOUBLE`
 - DATE → `DATE`
 - TIME → `TIME`
@@ -100,28 +111,28 @@ Type mapping from `get_table_columns` results:
 - Other → `STRING`
 
 After each call, check `status_code`:
-- **200/201**: Success. Collect the dataset ID.
+- **200/201**: Success. Collect the dataset ID. Add `{type: "dataset", id: <id>}` to `created_artifacts`.
 - **400**: Bad request. Report the error detail. Try to fix and retry once.
 - **404**: Data asset not found. **STOP** -- prerequisite validation missed something.
 - **Other error**: **STOP**.
 
-**GATE**: ALL datasets created successfully. Collect list of `{table_name, dataset_id}`.
+**GATE 2**: ALL datasets created successfully. Collect list of `{table_name, dataset_id}`.
 
-If ANY dataset failed and could not be retried: **ROLLBACK** -- delete all datasets created so far, then STOP.
+If ANY dataset failed and could not be retried: **ROLLBACK**.
 
 ### Step 3: Create Glossary with documentation
 
 1. Call `mcp__qlik-local__glossaries__create` with:
    - `name`: "Glossary - <semantic_view_short_name>"
    - `description`: "Business glossary from Snowflake Semantic View <full_name>"
-2. Capture `glossaryId`.
+2. Capture `glossaryId`. Add `{type: "glossary", id: <id>}` to `created_artifacts`.
 3. Create a term for the **semantic view itself** using its top-level `comment=`.
 4. For each fact, dimension, and metric that has a `comment=`, call `mcp__qlik-local__glossaries__create_term` with:
    - `glossaryId`: the glossary ID
    - `name`: the alias name from the DDL
    - `description`: the comment text
 
-**GATE**: Glossary created with ID. Term creation failures are non-fatal (log and continue).
+**GATE 3**: Glossary created with ID. Term creation failures are non-fatal (log and continue).
 
 ### Step 4: Create Data Product and link assets
 
@@ -129,7 +140,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK** -- delete all datas
    - `name`: "<semantic_view_short_name> Data Product"
    - `description`: "Data product from Snowflake Semantic View <full_name>. Contains <N> datasets and a business glossary."
    - `spaceId`: the spaceId from Step 0
-2. Capture `dataProductId`.
+2. Capture `dataProductId`. Add `{type: "data_product", id: <id>}` to `created_artifacts`.
    - If creation fails: **STOP**. Datasets and glossary remain as standalone assets.
 3. **Link datasets**: Call `mcp__qlik__qlik_update_data_product` with:
    - `dataProductId`: the data product ID
@@ -138,7 +149,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK** -- delete all datas
 4. **Activate**: Call `mcp__qlik__qlik_update_activate_data_product` with `dataProductId`.
    - If activation fails: Leave as draft. Report to user.
 
-**GATE**: Data product created and linked.
+**GATE 4**: Data product created and linked.
 
 ### Step 5: Post-execution verification
 
@@ -156,8 +167,9 @@ Present:
 - **Data Product**: name, ID, status, URL (https://<tenant>/data-product/<id>)
 - **Datasets**: table with name, ID, and status for each
 - **Glossary**: name, ID, number of terms created
+- **Data Asset**: ID and source (`pre-existing` or `created-this-run`)
 - **Space**: name
-- **Connection**: ID used
+- **Connection**: ID and technical name used
 - **Semantic View**: source name
 - **Verification**: PASS or list of issues
 
@@ -165,10 +177,11 @@ Present:
 
 If rollback is needed at any point:
 
-1. List all artifacts created (dataset IDs, glossary ID, data product ID).
+1. List all entries in `created_artifacts` (in creation order).
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
-3. If user confirms, delete in reverse order:
+3. If user confirms, delete in **reverse** order:
    - Data product: `mcp__qlik-local__data_products__delete`
    - Glossary: `mcp__qlik-local__catalog__delete` with the glossary item ID
    - Datasets: `mcp__qlik-local__catalog__delete` for each dataset item ID
+   - Data asset (ONLY if `dataAssetSource = "created-this-run"`): delete via catalog
 4. Confirm deletion of each artifact.
