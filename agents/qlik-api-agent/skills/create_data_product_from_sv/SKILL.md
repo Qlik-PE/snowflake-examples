@@ -104,21 +104,35 @@ For **each base table**, call `create_qlik_dataset` with BODY as a JSON string:
   "spaceId": "<spaceId>",
   "qri": "qdf:<connectionId>:<spaceId>:<fully_qualified_table_name>",
   "secureQri": "qdf:<connectionId>:<spaceId>:<fully_qualified_table_name>",
+  "createdByConnectionId": "<connectionId>",
   "dataAssetInfo": {
     "id": "<dataAssetId>",
-    "technicalName": "<connectionTechnicalName>",
     "dataStoreInfo": {
-      "id": "<dataAssetId>",
-      "technicalName": "<connectionTechnicalName>"
+      "id": "<dataAssetId>"
     }
   },
   "schema": {
-    "dataFields": [ ... ]
+    "dataFields": [
+      {
+        "name": "<COLUMN_NAME>",
+        "dataType": {
+          "type": "<mapped_type>",
+          "properties": {}
+        },
+        "primaryKey": false,
+        "nullable": true
+      }
+    ]
   }
 }
 ```
 
-**CRITICAL**: `dataAssetInfo.id` and `dataStoreInfo.id` MUST use the `dataAssetId` from Step 0.4 -- NEVER the `connectionId`.
+**CRITICAL payload rules**:
+- `dataAssetInfo` has ONLY `id` and `dataStoreInfo.id`. Do NOT add `technicalName` inside `dataAssetInfo` or `dataStoreInfo` -- the API schema does not expect it there.
+- `technicalName` goes at the **top level** of the payload (the fully qualified Snowflake table name).
+- `createdByConnectionId` links the dataset back to the Snowflake connection.
+- `dataAssetInfo.id` and `dataStoreInfo.id` MUST use the `dataAssetId` from Step 0.4 -- NEVER the `connectionId`.
+- For DECIMAL fields, `properties` MUST include `{"precision": N, "scale": N}`. For all other types, `properties` can be `{}`.
 
 **DECIMAL validation rule**: Every field with `dataType.type` = `DECIMAL` MUST include `properties: {"precision": N, "scale": N}` where both values are integers > 0. If precision or scale is missing/null from `get_table_columns`, use `precision=38, scale=0` and map to `INTEGER` instead. Validate this BEFORE sending the request.
 
