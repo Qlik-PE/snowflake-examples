@@ -30,8 +30,10 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
    - If found: extract `dataAssetId`. Skip to step 5.
 
    **4b. Discover via existing datasets**: If 4a returned nothing, search for datasets already linked to this connection. Call `mcp__qlik-local__catalog__search` with `query` set to the connection name/ID and `resourceType` set to `dataset`.
-   - If datasets are found: extract `dataAssetInfo.id` from any of them — that is the `dataAssetId`.
-   - Also extract `dataAssetInfo.technicalName` if available.
+   - If datasets are found:
+     - Extract `dataAssetInfo.id` from any of them — that is the `dataAssetId`.
+     - Extract the `qri` field (e.g. `qri:db:snowflake://<hash>#<hash>`). Split on `#` and store the prefix (everything before `#`) as `qriPrefix`. This is the connection-level QRI base used to build QRIs for new datasets.
+     - Also extract `dataAssetInfo.technicalName` if available.
 
    **4c. If BOTH 4a and 4b found nothing**: **STOP**. Tell the user:
    "The Snowflake connection exists but no data asset is registered. Please onboard the connection in Qlik Data Integration first, or provide a connection that is already onboarded."
@@ -40,8 +42,9 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
    - Do NOT use `connectionId` as `dataAssetId` — they are different Qlik objects.
    - Do NOT attempt to create a data asset automatically.
    - Do NOT proceed without a confirmed `dataAssetId`.
+   - Do NOT proceed without a `qriPrefix` (needed for building dataset QRIs).
 
-5. Store final values: `spaceId`, `spaceName`, `connectionId`, `connectionTechnicalName`, `dataAssetId`, `semanticViewName`.
+5. Store final values: `spaceId`, `spaceName`, `connectionId`, `connectionTechnicalName`, `dataAssetId`, `qriPrefix`, `semanticViewName`.
 
 **GATE 0**: All values captured. `dataAssetId` MUST be present and MUST NOT be the same as `connectionId`. If any validation failed, STOP here.
 
@@ -76,10 +79,9 @@ For **each base table**, call `create_qlik_dataset` with BODY as a JSON string:
   "name": "<table_name>",
   "technicalName": "<fully_qualified_table_name>",
   "description": "<comment from DDL or 'Table from Semantic View X'>",
-  "type": "CONNECTION",
   "spaceId": "<spaceId>",
-  "qri": "qdf:<connectionId>:<spaceId>:<fully_qualified_table_name>",
-  "secureQri": "qdf:<connectionId>:<spaceId>:<fully_qualified_table_name>",
+  "qri": "<qriPrefix>#<table_specific_hash_or_name>",
+  "secureQri": "<qriPrefix>#<table_specific_hash_or_name>",
   "createdByConnectionId": "<connectionId>",
   "dataAssetInfo": {
     "id": "<dataAssetId>",
@@ -104,10 +106,12 @@ For **each base table**, call `create_qlik_dataset` with BODY as a JSON string:
 ```
 
 **CRITICAL payload rules**:
-- `dataAssetInfo` has ONLY `id` and `dataStoreInfo.id`. Do NOT add `technicalName` inside `dataAssetInfo` or `dataStoreInfo` -- the API schema does not expect it there.
-- `technicalName` goes at the **top level** of the payload (the fully qualified Snowflake table name).
+- `qri` and `secureQri`: use the `qriPrefix` discovered in Step 0.4b (e.g. `qri:db:snowflake://<hash>`) plus `#` plus the table identifier. If the existing datasets use a hash after `#`, use the fully qualified table name as the fragment (e.g. `qri:db:snowflake://<hash>#CORTEX_DEMOS.PUBLIC.Customer_Master`). Inspect the existing dataset QRIs to match the pattern.
+- `dataAssetInfo` has ONLY `id` and `dataStoreInfo.id`. Do NOT add `technicalName` inside.
+- `technicalName` goes at the **top level** (the fully qualified Snowflake table name).
 - `createdByConnectionId` links the dataset back to the Snowflake connection.
-- `dataAssetInfo.id` and `dataStoreInfo.id` MUST use the `dataAssetId` from Step 0.4 -- NEVER the `connectionId`.
+- `dataAssetInfo.id` and `dataStoreInfo.id` MUST use the `dataAssetId` -- NEVER the `connectionId`.
+- Do NOT include `type: "CONNECTION"` -- omit the `type` field or match what existing datasets use.
 - For DECIMAL fields, `properties` MUST include `{"precision": N, "scale": N}`. For all other types, `properties` can be `{}`.
 
 **DECIMAL validation rule**: Every field with `dataType.type` = `DECIMAL` MUST include `properties: {"precision": N, "scale": N}` where both values are integers > 0. If precision or scale is missing/null from `get_table_columns`, use `precision=38, scale=0` and map to `INTEGER` instead. Validate this BEFORE sending the request.
