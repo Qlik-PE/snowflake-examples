@@ -26,7 +26,7 @@ Cortex Agent (QLIK_API_AGENT)
 | Tool | Procedure | Qlik API Endpoint |
 |------|-----------|-------------------|
 | `create_qlik_app` | `CREATE_QLIK_APP` | `POST /api/v1/apps` |
-| `create_qlik_dataset_v2` | `CREATE_QLIK_DATASET_V2` | `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` |
+| `create_qlik_dataset` | `CREATE_QLIK_DATASET` | `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` |
 | `set_qlik_app_script` | `SET_QLIK_APP_SCRIPT` | `POST /api/v1/apps/{appId}/scripts` |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL()` |
 
@@ -47,7 +47,7 @@ These are provided by the Qlik MCP server registered in CoCo and used by the ski
 |-------|-------------|
 | `create_data_product_from_sv` | End-to-end workflow: inspect a Snowflake Semantic View, create Qlik datasets for each base table, create an app with load script, create a glossary with terms, and create a data product. |
 
-## Dataset Creation: `CREATE_QLIK_DATASET_V2`
+## Dataset Creation: `CREATE_QLIK_DATASET`
 
 Uses `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` -- the same undocumented endpoint that the Qlik Cloud UI uses when you add a dataset through the browser. This approach:
 
@@ -59,7 +59,7 @@ Uses `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-conn
 
 **Usage:**
 ```sql
-CALL CREATE_QLIK_DATASET_V2('SNOWFLAKE_SAMPLE_DATA', 'TPCH_SF1', 'NATION');
+CALL CREATE_QLIK_DATASET('SNOWFLAKE_SAMPLE_DATA', 'TPCH_SF1', 'NATION');
 ```
 
 **API contract** (reverse-engineered from browser network capture):

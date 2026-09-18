@@ -1,6 +1,6 @@
 ---
 name: create_data_product_from_sv
-description: Creates a Qlik Data Product from a Snowflake Semantic View. Registers datasets via the catalog-integration API (V2), creates a glossary with documentation, creates a data product, and links everything together.
+description: Creates a Qlik Data Product from a Snowflake Semantic View. Registers datasets via the catalog-integration API, creates a glossary with documentation, creates a data product, and links everything together.
 ---
 
 ## Workflow: Create Qlik Data Product from Snowflake Semantic View
@@ -42,7 +42,7 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
 
 **Important**: Create ALL datasets before creating the data product. If any dataset fails, do NOT proceed.
 
-For **each base table**, call `create_qlik_dataset_v2` with:
+For **each base table**, call `create_qlik_dataset` with:
 - `DB`: the database name
 - `SCH`: the schema name
 - `TBL`: the table name

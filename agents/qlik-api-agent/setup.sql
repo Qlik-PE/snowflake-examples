@@ -161,11 +161,11 @@ def get_columns(session, database_name, schema_name, table_name):
     ]
 $$;
 
--- 4f. Create Qlik Dataset V2 (catalog-integration undocumented API)
+-- 4b. Create Qlik Dataset (catalog-integration API)
 -- Uses the internal create-hierarchy-for-connected-datasets endpoint
 -- that the Qlik UI uses. Auto-discovers table metadata from INFORMATION_SCHEMA
 -- and creates the dataset in a single call (no QRI/dataAsset discovery needed).
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET_V2(
+CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
     DB VARCHAR, SCH VARCHAR, TBL VARCHAR,
     SPACE_ID VARCHAR DEFAULT '60d23b10073cb60001e69ab4',
     CONNECTION_ID VARCHAR DEFAULT 'fe1bdad2-5b26-466a-b648-778258586334',
@@ -339,7 +339,7 @@ instructions:
     When the user asks to create a data product from a semantic view, load and follow
     the create_data_product_from_sv skill strictly in order. Respect every GATE.
     If a step fails, follow the rollback instructions.
-    For dataset creation, always prefer create_qlik_dataset_v2 which handles
+    For dataset creation, always prefer create_qlik_dataset which handles
     column discovery, type mapping, and the API call in a single step.
 tools:
   - tool_spec:
@@ -389,7 +389,7 @@ tools:
         required: [SEMANTIC_VIEW_NAME]
   - tool_spec:
       type: generic
-      name: create_qlik_dataset_v2
+      name: create_qlik_dataset
       description: "Creates a Qlik dataset from a Snowflake table using the catalog-integration API. Auto-discovers columns from INFORMATION_SCHEMA. No QRI or data asset discovery needed."
       input_schema:
         type: object
@@ -449,9 +449,9 @@ tool_resources:
     execution_environment:
       type: warehouse
       warehouse: COMPUTE
-  create_qlik_dataset_v2:
+  create_qlik_dataset:
     type: procedure
-    identifier: CREATE_QLIK_DATASET_V2
+    identifier: CREATE_QLIK_DATASET
     execution_environment:
       type: warehouse
       warehouse: COMPUTE
