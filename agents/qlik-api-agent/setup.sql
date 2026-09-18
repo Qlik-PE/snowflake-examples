@@ -157,7 +157,52 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
--- 4e. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+-- 4e. Create Qlik Data Asset (POST /api/v1/data-assets)
+CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATA_ASSET(
+  APP_TYPE VARCHAR,
+  DATASTORE_ID VARCHAR,
+  DATASTORE_TECHNICAL_NAME VARCHAR,
+  NAME VARCHAR DEFAULT NULL,
+  DESCRIPTION VARCHAR DEFAULT NULL,
+  SPACE_ID VARCHAR DEFAULT NULL
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.10'
+HANDLER = 'create_data_asset'
+EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
+PACKAGES = ('snowflake-snowpark-python', 'requests')
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+AS
+$$
+import _snowflake
+import requests
+
+def create_data_asset(session, app_type, datastore_id, datastore_technical_name, name=None, description=None, space_id=None):
+    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
+    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/data-assets'
+    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
+    body = {
+        'appType': app_type,
+        'dataStoreInfo': {
+            'id': datastore_id,
+            'technicalName': datastore_technical_name
+        }
+    }
+    if name:
+        body['name'] = name
+    if description:
+        body['description'] = description
+    if space_id:
+        body['spaceId'] = space_id
+    resp = requests.post(url, headers=headers, json=body)
+    try:
+        return {'status_code': resp.status_code, 'response': resp.json()}
+    except:
+        return {'status_code': resp.status_code, 'response': resp.text}
+$$;
+
+-- 4f. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
 CREATE OR REPLACE PROCEDURE GET_TABLE_COLUMNS(
   DATABASE_NAME VARCHAR,
   SCHEMA_NAME VARCHAR,
@@ -222,16 +267,17 @@ models:
 instructions:
   response: >
     You are an agent that interacts with the Qlik Cloud REST API and Snowflake.
-    You can create Qlik apps, register data sets, set app load scripts, and inspect
-    Snowflake semantic views via procedure-backed tools. Additional Qlik operations
-    (list spaces, create glossaries/terms, create data products) are available via
-    the Qlik MCP server attached to this agent.
+    You can create Qlik apps, register data assets, register data sets, set app load
+    scripts, inspect Snowflake semantic views, and get table column metadata.
+    Additional Qlik operations (list spaces, search catalog, create glossaries/terms,
+    create data products) are available via the Qlik MCP server attached to this agent.
     When asked to create a data product from a semantic view, load and follow the
-    create_data_product_from_sv skill step by step.
+    create_data_product_from_sv skill step by step. Follow every GATE.
   orchestration: >
-    Use the appropriate tool for each Qlik operation.
+    Use the appropriate tool for each operation.
     When the user asks to create a data product from a semantic view, load and follow
-    the create_data_product_from_sv skill step by step.
+    the create_data_product_from_sv skill strictly in order. Respect every GATE.
+    If a step fails, follow the rollback instructions.
 tools:
   - tool_spec:
       type: generic
@@ -250,6 +296,32 @@ tools:
             type: string
             description: "Space ID (optional)"
         required: [APP_NAME]
+  - tool_spec:
+      type: generic
+      name: create_qlik_data_asset
+      description: "Registers a new data asset in the Qlik catalog via POST /api/v1/data-assets. Required when a Snowflake connection has not been onboarded yet."
+      input_schema:
+        type: object
+        properties:
+          APP_TYPE:
+            type: string
+            description: "Application type (e.g. 'Snowflake')"
+          DATASTORE_ID:
+            type: string
+            description: "ID of the data store (the Qlik connection UUID)"
+          DATASTORE_TECHNICAL_NAME:
+            type: string
+            description: "Technical name of the data store connection"
+          NAME:
+            type: string
+            description: "Display name (optional)"
+          DESCRIPTION:
+            type: string
+            description: "Description (optional)"
+          SPACE_ID:
+            type: string
+            description: "Space ID (optional)"
+        required: [APP_TYPE, DATASTORE_ID, DATASTORE_TECHNICAL_NAME]
   - tool_spec:
       type: generic
       name: create_qlik_dataset
@@ -310,6 +382,12 @@ tool_resources:
   create_qlik_app:
     type: procedure
     identifier: CREATE_QLIK_APP
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE
+  create_qlik_data_asset:
+    type: procedure
+    identifier: CREATE_QLIK_DATA_ASSET
     execution_environment:
       type: warehouse
       warehouse: COMPUTE

@@ -17,8 +17,16 @@ Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to t
    - If the connection is NOT found: **STOP**. Tell the user the Snowflake connection is not registered in Qlik Cloud. They must create it first via Qlik Management Console.
    - If found: extract the connection `id` (this is the UUID to use as `dataAssetInfo.id` in Step 3).
 4. **Validate the data asset is onboarded**: Call `mcp__qlik-local__catalog__search` with `query` set to the connection name and `resourceType` set to `dataasset`.
-   - If the data asset is NOT found: **STOP**. Tell the user the connection exists but has not been profiled/onboarded in the Qlik catalog. They must run catalog onboarding on the connection first.
-   - If found: extract the `dataAssetId` -- this confirms datasets can be created against this connection.
+   - If the data asset is NOT found: **auto-create it** by calling `create_qlik_data_asset` with:
+     - `APP_TYPE`: "Snowflake"
+     - `DATASTORE_ID`: the connection UUID from step 3
+     - `DATASTORE_TECHNICAL_NAME`: the connection technical name from step 3
+     - `NAME`: "Snowflake - <connection_name>"
+     - `DESCRIPTION`: "Auto-registered data asset for Snowflake connection <connection_id>"
+     - `SPACE_ID`: the spaceId from step 2
+   - If `create_qlik_data_asset` returns 201: extract the `dataAssetId` from the response. Continue.
+   - If `create_qlik_data_asset` fails: **STOP**. Report the error -- the connection may not support data asset registration.
+   - If the data asset already exists: extract the `dataAssetId`.
 5. Store: `spaceId`, `spaceName`, `connectionId`, `dataAssetId`, `semanticViewName`.
 
 **GATE**: All 5 values captured. If any validation failed, STOP here.
