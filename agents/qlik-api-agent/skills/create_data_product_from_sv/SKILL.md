@@ -10,89 +10,91 @@ Follow these steps **in order**. Do NOT skip steps.
 ### Step 1: Gather inputs
 
 1. The user should provide the **fully qualified Semantic View name** (e.g. `DB.SCHEMA.MY_VIEW`). If not provided, ask for it.
-2. Call `mcp__qlik-local__spaces__list` to list all available Qlik spaces.
-3. Present the spaces to the user and ask them to **choose a target space** for the data product.
-4. Store the chosen `spaceId` and `spaceName`.
+2. Ask the user which **Snowflake connection name** to use in Qlik (e.g. `Snowflake:SNOWFLAKE_MONITORING_DATA`). If they don't know, use `Snowflake:SNOWFLAKE_MONITORING_DATA` as default.
+3. Call `mcp__qlik-local__spaces__list` to list all available Qlik spaces.
+4. Present the spaces to the user and ask them to **choose a target space** for the data product.
+5. Store the chosen `spaceId`, `spaceName`, and `connectionName`.
 
 ### Step 2: Inspect the Semantic View
 
 1. Call `get_semantic_view_ddl` with `SEMANTIC_VIEW_NAME` set to the fully qualified semantic view name.
 2. Parse the returned DDL to extract:
-   - All **base tables** referenced (the physical tables behind the semantic view)
+   - All **base tables** referenced (the physical tables behind the semantic view, including their physical names with quotes if needed)
    - All **columns/measures/dimensions** defined
-   - Any **descriptions** or documentation in the DDL
-3. Present the list of base tables and columns to the user for confirmation.
+   - Any **descriptions** or documentation in the DDL (from `comment=` clauses)
+3. For **each base table**, run a SQL query to get the actual column types:
+   ```sql
+   SELECT COLUMN_NAME, DATA_TYPE, NUMERIC_PRECISION, NUMERIC_SCALE
+   FROM <database>.INFORMATION_SCHEMA.COLUMNS
+   WHERE TABLE_SCHEMA = '<schema>' AND TABLE_NAME = '<table_name>'
+   ORDER BY ORDINAL_POSITION
+   ```
+4. Present the list of base tables, their columns with types, and the semantic view descriptions to the user for confirmation.
 
 ### Step 3: Create Qlik Datasets (one per base table)
 
 For **each base table** found in Step 2, call `create_qlik_dataset` with:
 - **BODY**: a JSON string with:
-  - `name`: the table name (e.g. `ORDERS`)
-  - `technicalName`: the fully qualified Snowflake table name (e.g. `DB.SCHEMA.ORDERS`)
+  - `name`: the table name (e.g. `Customer_Master`)
+  - `technicalName`: the fully qualified Snowflake table name (e.g. `CORTEX_DEMOS.PUBLIC.Customer_Master`)
   - `description`: description from the semantic view if available, otherwise "Table from Semantic View <name>"
   - `type`: "CONNECTION"
   - `spaceId`: the spaceId chosen in Step 1
-  - `qri` and `secureQri`: "qdf:Snowflake:SNOWFLAKE_MONITORING_DATA:<spaceId>:<fully_qualified_table_name>"
+  - `qri`: `"qdf:<connectionName>:<spaceId>:<fully_qualified_table_name>"`
+  - `secureQri`: same value as `qri`
   - `dataAssetInfo`:
-    - `id`: "Snowflake:SNOWFLAKE_MONITORING_DATA"
+    - `id`: the connectionName (e.g. `"Snowflake:SNOWFLAKE_MONITORING_DATA"`)
+    - `technicalName`: the connection short name (e.g. `"SNOWFLAKE_MONITORING_DATA"`)
     - `dataStoreInfo`:
-      - `id`: "Snowflake:SNOWFLAKE_MONITORING_DATA"
-      - `technicalName`: "SNOWFLAKE_MONITORING_DATA"
-  - `schema.dataFields`: array of fields, each with `name` and `dataType.type` mapped:
-    - VARCHAR/STRING/TEXT -> STRING
-    - NUMBER/INT/INTEGER/BIGINT/SMALLINT -> INTEGER
-    - FLOAT/DOUBLE/REAL -> DOUBLE
-    - DECIMAL/NUMERIC -> DECIMAL (include properties: {precision, scale})
-    - DATE -> DATE
-    - TIMESTAMP* -> TIMESTAMP
-    - BOOLEAN -> BOOLEAN
-    - BINARY/VARBINARY -> BINARY
-    - Other -> STRING
+      - `id`: same as dataAssetInfo.id
+      - `technicalName`: same as dataAssetInfo.technicalName
+  - `schema.dataFields`: array built from INFORMATION_SCHEMA.COLUMNS results. For each column:
+    - `name`: COLUMN_NAME
+    - `dataType.type`: mapped from Snowflake DATA_TYPE:
+      - TEXT/VARCHAR/STRING/CHAR -> `STRING`
+      - NUMBER with NUMERIC_SCALE=0 -> `INTEGER`
+      - NUMBER with NUMERIC_SCALE>0 -> `DECIMAL` (add `properties: {precision: NUMERIC_PRECISION, scale: NUMERIC_SCALE}`)
+      - FLOAT/DOUBLE/REAL -> `DOUBLE`
+      - DATE -> `DATE`
+      - TIME -> `TIME`
+      - TIMESTAMP/TIMESTAMP_NTZ/TIMESTAMP_LTZ/TIMESTAMP_TZ -> `TIMESTAMP`
+      - BOOLEAN -> `BOOLEAN`
+      - BINARY/VARBINARY -> `BINARY`
+      - VARIANT/OBJECT/ARRAY -> `STRING`
+      - Other -> `STRING`
 
-Collect all returned dataset IDs.
+Collect all returned **dataset IDs** from the responses.
 
-### Step 4: Create a Qlik App with load script
-
-1. Call `create_qlik_app` with:
-   - `APP_NAME`: "Data Product - <semantic_view_short_name>"
-   - `APP_DESCRIPTION`: "Auto-generated app for semantic view <semantic_view_name>"
-   - `SPACE_ID`: the spaceId from Step 1
-2. Capture the `appId` from the response (field: `attributes.id`).
-3. Build a Qlik load script:
-   ```
-   LIB CONNECT TO 'Snowflake:SNOWFLAKE_MONITORING_DATA';
-
-   <TableName>:
-   LOAD *
-   SQL SELECT * FROM <fully_qualified_table_name>;
-   ```
-   Repeat the LOAD block for each base table.
-4. Call `set_qlik_app_script` with the `APP_ID`, the generated `SCRIPT`, and `VERSION_MESSAGE`: "Initial load script from Semantic View <name>".
-
-### Step 5: Create a Glossary with documentation
+### Step 4: Create a Glossary with documentation
 
 1. Call `mcp__qlik-local__glossaries__create` with:
    - `name`: "Glossary - <semantic_view_short_name>"
    - `description`: "Business glossary auto-generated from Snowflake Semantic View <semantic_view_name>"
-2. Capture the glossary ID from the response.
-3. For each column/measure/dimension from the semantic view that has a description, call `mcp__qlik-local__glossaries__create_term` with:
+2. Capture the `glossaryId` from the response.
+3. For each **fact, dimension, and metric** from the semantic view DDL that has a `comment=` description, call `mcp__qlik-local__glossaries__create_term` with:
    - `glossaryId`: the glossary ID
-   - `name`: the column/measure/dimension name
-   - `description`: the description from the semantic view DDL
+   - `name`: the column/measure/metric name (use the alias if present)
+   - `description`: the comment text from the DDL
+4. Also create a term for the **semantic view itself** using its top-level `comment=` as description.
 
-### Step 6: Create the Data Product
+### Step 5: Create the Data Product and link all assets
 
 1. Call `mcp__qlik-local__data_products__create` with:
    - `name`: "<semantic_view_short_name> Data Product"
    - `description`: "Data product from Snowflake Semantic View <semantic_view_name>. Contains <N> datasets and a business glossary."
    - `spaceId`: the spaceId from Step 1
-2. Capture the dataProductId.
+2. Capture the `dataProductId` from the response.
+3. **Link datasets to the data product**: Call `mcp__qlik__qlik_update_data_product` with:
+   - `dataProductId`: the data product ID
+   - `datasetsOps`: an array of `{"op": "add", "path": "/datasets/-", "value": {"id": "<dataset_id>"}}` for each dataset created in Step 3
+4. **Activate the data product**: Call `mcp__qlik__qlik_update_activate_data_product` with:
+   - `dataProductId`: the data product ID
 
-### Step 7: Summary
+### Step 6: Summary
 
 Present a final summary:
-- **Data Product**: name and ID
-- **Datasets created**: list with names and IDs
-- **App created**: name and ID
-- **Glossary created**: name, ID, and number of terms
-- **Space**: name
+- **Data Product**: name, ID, and status (active/draft)
+- **Datasets created**: list with names and IDs, all linked to the data product
+- **Glossary created**: name, ID, and number of terms created
+- **Space**: name where everything was created
+- **Connection**: Snowflake connection used
