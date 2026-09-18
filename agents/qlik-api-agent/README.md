@@ -26,7 +26,7 @@ Cortex Agent (QLIK_API_AGENT)
 | Tool | Procedure | Qlik API Endpoint |
 |------|-----------|-------------------|
 | `create_qlik_app` | `CREATE_QLIK_APP` | `POST /api/v1/apps` |
-| `create_qlik_dataset` | `CREATE_QLIK_DATASET` | `POST /api/v1/data-sets` |
+| `create_qlik_dataset_v2` | `CREATE_QLIK_DATASET_V2` | `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` |
 | `set_qlik_app_script` | `SET_QLIK_APP_SCRIPT` | `POST /api/v1/apps/{appId}/scripts` |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL()` |
 
@@ -46,6 +46,69 @@ These are provided by the Qlik MCP server registered in CoCo and used by the ski
 | Skill | Description |
 |-------|-------------|
 | `create_data_product_from_sv` | End-to-end workflow: inspect a Snowflake Semantic View, create Qlik datasets for each base table, create an app with load script, create a glossary with terms, and create a data product. |
+
+## Dataset Creation: `CREATE_QLIK_DATASET_V2`
+
+Uses `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` -- the same undocumented endpoint that the Qlik Cloud UI uses when you add a dataset through the browser. This approach:
+
+- Creates the dataset in a **single call** (no QRI/dataAsset discovery needed)
+- Auto-discovers table metadata from Snowflake `INFORMATION_SCHEMA.COLUMNS`
+- Maps Snowflake types to JDBC `dataType` codes (NUMBER->3, VARCHAR->12, DOUBLE->8, TIMESTAMP->93, etc.)
+- Generates the Qlik selection script in load-script format (`[TABLE]:\nSELECT ... FROM ...;`)
+- Only requires `connectionId`, `database`, `schema`, and table metadata
+
+**Usage:**
+```sql
+CALL CREATE_QLIK_DATASET_V2('SNOWFLAKE_SAMPLE_DATA', 'TPCH_SF1', 'NATION');
+```
+
+**API contract** (reverse-engineered from browser network capture):
+```json
+{
+  "spaceId": "<qlik-space-id>",
+  "connectionId": "<qlik-connection-id>",
+  "database": "<snowflake-database>",
+  "schema": "<snowflake-schema>",
+  "tables": [{
+    "tableName": "<table-name>",
+    "selectionScript": "[TABLE]:\nSELECT \"COL1\",\n\t\"COL2\"\nFROM \"DB\".\"SCHEMA\".\"TABLE\";",
+    "additionalProperties": {
+      "fields": "<JSON-stringified array of field objects>",
+      "tableRequestParameters": "<JSON-stringified array of {name,value} pairs>"
+    }
+  }]
+}
+```
+
+Each field object in the `fields` array:
+```json
+{
+  "name": "COL_NAME",
+  "fullName": "COL_NAME",
+  "nativeType": "VARCHAR",
+  "nativeFieldInfo": {
+    "dataType": 12,
+    "name": "COL_NAME",
+    "nullable": 1,
+    "ordinalPostion": 1,
+    "scale": 0,
+    "size": 16777216,
+    "typeName": "VARCHAR"
+  },
+  "isSelected": true
+}
+```
+
+The `tableRequestParameters` array sets the Snowflake role, database, and schema (owner):
+```json
+[
+  {"name": "role", "value": "QLIK_DATA_PRODUCT"},
+  {"name": "database", "value": "MY_DB"},
+  {"name": "owner", "value": "MY_SCHEMA"}
+]
+```
+
+Returns HTTP 201 with an array of created dataset IDs on success.
 
 ## Prerequisites
 

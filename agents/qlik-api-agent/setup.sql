@@ -83,35 +83,7 @@ def create_app(session, app_name, app_description='', space_id=None):
         return {'status_code': resp.status_code, 'response': resp.text}
 $$;
 
--- 4b. Create Qlik Dataset (POST /api/v1/data-sets)
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
-  BODY VARCHAR
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'create_dataset'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
-AS
-$$
-import _snowflake
-import requests
-import json
-
-def create_dataset(session, body):
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/data-sets'
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    resp = requests.post(url, headers=headers, json=json.loads(body))
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
-
--- 4c. Set Qlik App Script (POST /api/v1/apps/{appId}/scripts)
+-- 4b. Set Qlik App Script (POST /api/v1/apps/{appId}/scripts)
 CREATE OR REPLACE PROCEDURE SET_QLIK_APP_SCRIPT(
   APP_ID VARCHAR,
   SCRIPT VARCHAR,
@@ -189,6 +161,140 @@ def get_columns(session, database_name, schema_name, table_name):
     ]
 $$;
 
+-- 4f. Create Qlik Dataset V2 (catalog-integration undocumented API)
+-- Uses the internal create-hierarchy-for-connected-datasets endpoint
+-- that the Qlik UI uses. Auto-discovers table metadata from INFORMATION_SCHEMA
+-- and creates the dataset in a single call (no QRI/dataAsset discovery needed).
+CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET_V2(
+    DB VARCHAR, SCH VARCHAR, TBL VARCHAR,
+    SPACE_ID VARCHAR DEFAULT '60d23b10073cb60001e69ab4',
+    CONNECTION_ID VARCHAR DEFAULT 'fe1bdad2-5b26-466a-b648-778258586334',
+    SF_ROLE VARCHAR DEFAULT 'QLIK_DATA_PRODUCT'
+)
+  RETURNS VARIANT
+  LANGUAGE PYTHON
+  RUNTIME_VERSION='3.10'
+  EXTERNAL_ACCESS_INTEGRATIONS=(QLIK_CLOUD_EAI)
+  PACKAGES=('snowflake-snowpark-python', 'requests')
+  SECRETS=('qlik_api_key' = QLIK_API_KEY_SECRET)
+  HANDLER = 'run'
+AS
+$$
+import _snowflake, requests, json
+
+# Snowflake type -> (JDBC dataType code, native type name)
+TYPE_MAP = {
+    'NUMBER':       (3,  'DECIMAL'),
+    'DECIMAL':      (3,  'DECIMAL'),
+    'NUMERIC':      (3,  'DECIMAL'),
+    'INT':          (3,  'DECIMAL'),
+    'INTEGER':      (3,  'DECIMAL'),
+    'BIGINT':       (3,  'DECIMAL'),
+    'SMALLINT':     (3,  'DECIMAL'),
+    'TINYINT':      (3,  'DECIMAL'),
+    'BYTEINT':      (3,  'DECIMAL'),
+    'FLOAT':        (8,  'DOUBLE'),
+    'FLOAT4':       (8,  'DOUBLE'),
+    'FLOAT8':       (8,  'DOUBLE'),
+    'DOUBLE':       (8,  'DOUBLE'),
+    'DOUBLE PRECISION': (8, 'DOUBLE'),
+    'REAL':         (8,  'DOUBLE'),
+    'VARCHAR':      (12, 'VARCHAR'),
+    'TEXT':         (12, 'VARCHAR'),
+    'STRING':       (12, 'VARCHAR'),
+    'CHAR':         (12, 'VARCHAR'),
+    'CHARACTER':    (12, 'VARCHAR'),
+    'BOOLEAN':      (16, 'BOOLEAN'),
+    'DATE':         (91, 'DATE'),
+    'TIMESTAMP_NTZ':(93, 'TIMESTAMP'),
+    'TIMESTAMP_LTZ':(93, 'TIMESTAMP'),
+    'TIMESTAMP_TZ': (93, 'TIMESTAMP'),
+    'TIME':         (92, 'TIME'),
+    'BINARY':       (-2, 'BINARY'),
+    'VARBINARY':    (-2, 'BINARY'),
+    'VARIANT':      (12, 'VARCHAR'),
+    'OBJECT':       (12, 'VARCHAR'),
+    'ARRAY':        (12, 'VARCHAR'),
+}
+
+def run(session, db, sch, tbl, space_id, connection_id, sf_role):
+    rows = session.sql(f"""
+        SELECT COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, IS_NULLABLE,
+               COALESCE(NUMERIC_PRECISION, 0) AS PREC,
+               COALESCE(NUMERIC_SCALE, 0) AS SCALE,
+               COALESCE(CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 38) AS SIZE
+        FROM {db}.INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{sch}' AND TABLE_NAME = '{tbl}'
+        ORDER BY ORDINAL_POSITION
+    """).collect()
+
+    if not rows:
+        return {"error": f"No columns found for {db}.{sch}.{tbl}"}
+
+    fields = []
+    select_cols = []
+    for r in rows:
+        col = r['COLUMN_NAME']
+        dt = r['DATA_TYPE'].upper()
+        jdbc_code, native = TYPE_MAP.get(dt, (12, 'VARCHAR'))
+        nullable = 1 if r['IS_NULLABLE'] == 'YES' else 0
+        size = int(r['SIZE']) if r['SIZE'] else 38
+        scale = int(r['SCALE']) if r['SCALE'] else 0
+
+        fields.append({
+            "name": col, "fullName": col, "nativeType": native,
+            "nativeFieldInfo": {
+                "dataType": jdbc_code, "name": col, "nullable": nullable,
+                "ordinalPostion": int(r['ORDINAL_POSITION']),
+                "scale": scale, "size": size, "typeName": native
+            },
+            "isSelected": True
+        })
+        select_cols.append(f'"{col}"')
+
+    fqn = f'"{db}"."{sch}"."{tbl}"'
+    select_script = f'[{tbl}]:\nSELECT ' + ',\n\t'.join(select_cols) + f'\nFROM {fqn};'
+
+    table_params = [
+        {"name": "role", "value": sf_role},
+        {"name": "database", "value": db},
+        {"name": "owner", "value": sch}
+    ]
+
+    payload = {
+        "spaceId": space_id,
+        "connectionId": connection_id,
+        "database": db,
+        "schema": sch,
+        "tables": [{
+            "tableName": tbl,
+            "selectionScript": select_script,
+            "additionalProperties": {
+                "fields": json.dumps(fields),
+                "tableRequestParameters": json.dumps(table_params)
+            }
+        }]
+    }
+
+    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
+    resp = requests.post(
+        "https://partner-engineering-saas.us.qlikcloud.com/api/v1/catalog/"
+        "catalog-integration/actions/create-hierarchy-for-connected-datasets",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json=payload,
+        timeout=30
+    )
+    return {
+        "status": resp.status_code,
+        "dataset_ids": resp.json() if resp.status_code == 201 else None,
+        "error": resp.text if resp.status_code != 201 else None,
+        "table": f"{db}.{sch}.{tbl}"
+    }
+$$;
+
 -- NOTE: The following Qlik operations are handled by the Qlik MCP server
 -- registered in CoCo, not by stored procedures:
 --   - List spaces:           mcp__qlik-local__spaces__list
@@ -233,10 +339,8 @@ instructions:
     When the user asks to create a data product from a semantic view, load and follow
     the create_data_product_from_sv skill strictly in order. Respect every GATE.
     If a step fails, follow the rollback instructions.
-    CRITICAL: discover the data asset from the catalog or existing datasets. NEVER
-    create a data asset automatically. NEVER use connectionId as dataAssetId.
-    Dataset payload: dataAssetInfo has ONLY id and dataStoreInfo.id. technicalName
-    at top level. Include createdByConnectionId.
+    For dataset creation, always prefer create_qlik_dataset_v2 which handles
+    column discovery, type mapping, and the API call in a single step.
 tools:
   - tool_spec:
       type: generic
@@ -255,17 +359,6 @@ tools:
             type: string
             description: "Space ID (optional)"
         required: [APP_NAME]
-  - tool_spec:
-      type: generic
-      name: create_qlik_dataset
-      description: "Creates a data set in Qlik catalog via POST /api/v1/data-sets. BODY is a JSON string."
-      input_schema:
-        type: object
-        properties:
-          BODY:
-            type: string
-            description: "JSON string with the data set payload"
-        required: [BODY]
   - tool_spec:
       type: generic
       name: set_qlik_app_script
@@ -296,6 +389,32 @@ tools:
         required: [SEMANTIC_VIEW_NAME]
   - tool_spec:
       type: generic
+      name: create_qlik_dataset_v2
+      description: "Creates a Qlik dataset from a Snowflake table using the catalog-integration API. Auto-discovers columns from INFORMATION_SCHEMA. No QRI or data asset discovery needed."
+      input_schema:
+        type: object
+        properties:
+          DB:
+            type: string
+            description: "Snowflake database name"
+          SCH:
+            type: string
+            description: "Snowflake schema name"
+          TBL:
+            type: string
+            description: "Snowflake table name"
+          SPACE_ID:
+            type: string
+            description: "Qlik space ID (optional, defaults to Snowflake shared space)"
+          CONNECTION_ID:
+            type: string
+            description: "Qlik connection ID for the Snowflake connection (optional)"
+          SF_ROLE:
+            type: string
+            description: "Snowflake role for Qlik to use (optional, defaults to QLIK_DATA_PRODUCT)"
+        required: [DB, SCH, TBL]
+  - tool_spec:
+      type: generic
       name: get_table_columns
       description: "Returns column names, data types, precision and scale for a Snowflake table via INFORMATION_SCHEMA"
       input_schema:
@@ -318,12 +437,6 @@ tool_resources:
     execution_environment:
       type: warehouse
       warehouse: COMPUTE
-  create_qlik_dataset:
-    type: procedure
-    identifier: CREATE_QLIK_DATASET
-    execution_environment:
-      type: warehouse
-      warehouse: COMPUTE
   set_qlik_app_script:
     type: procedure
     identifier: SET_QLIK_APP_SCRIPT
@@ -333,6 +446,12 @@ tool_resources:
   get_semantic_view_ddl:
     type: procedure
     identifier: GET_SEMANTIC_VIEW_DDL
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE
+  create_qlik_dataset_v2:
+    type: procedure
+    identifier: CREATE_QLIK_DATASET_V2
     execution_environment:
       type: warehouse
       warehouse: COMPUTE
