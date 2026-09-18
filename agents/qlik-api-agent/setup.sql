@@ -157,6 +157,38 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
+-- 4e. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+CREATE OR REPLACE PROCEDURE GET_TABLE_COLUMNS(
+  DATABASE_NAME VARCHAR,
+  SCHEMA_NAME VARCHAR,
+  TABLE_NAME VARCHAR
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.10'
+HANDLER = 'get_columns'
+PACKAGES = ('snowflake-snowpark-python')
+AS
+$$
+def get_columns(session, database_name, schema_name, table_name):
+    query = f"""
+        SELECT COLUMN_NAME, DATA_TYPE, NUMERIC_PRECISION, NUMERIC_SCALE
+        FROM {database_name}.INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'
+        ORDER BY ORDINAL_POSITION
+    """
+    rows = session.sql(query).collect()
+    return [
+        {
+            'column_name': r['COLUMN_NAME'],
+            'data_type': r['DATA_TYPE'],
+            'numeric_precision': r['NUMERIC_PRECISION'],
+            'numeric_scale': r['NUMERIC_SCALE']
+        }
+        for r in rows
+    ]
+$$;
+
 -- NOTE: The following Qlik operations are handled by the Qlik MCP server
 -- registered in CoCo, not by stored procedures:
 --   - List spaces:           mcp__qlik-local__spaces__list
@@ -257,6 +289,23 @@ tools:
             type: string
             description: "Fully qualified semantic view name"
         required: [SEMANTIC_VIEW_NAME]
+  - tool_spec:
+      type: generic
+      name: get_table_columns
+      description: "Returns column names, data types, precision and scale for a Snowflake table via INFORMATION_SCHEMA"
+      input_schema:
+        type: object
+        properties:
+          DATABASE_NAME:
+            type: string
+            description: "Database name"
+          SCHEMA_NAME:
+            type: string
+            description: "Schema name"
+          TABLE_NAME:
+            type: string
+            description: "Table name"
+        required: [DATABASE_NAME, SCHEMA_NAME, TABLE_NAME]
 tool_resources:
   create_qlik_app:
     type: procedure
@@ -279,6 +328,12 @@ tool_resources:
   get_semantic_view_ddl:
     type: procedure
     identifier: GET_SEMANTIC_VIEW_DDL
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE
+  get_table_columns:
+    type: procedure
+    identifier: GET_TABLE_COLUMNS
     execution_environment:
       type: warehouse
       warehouse: COMPUTE
