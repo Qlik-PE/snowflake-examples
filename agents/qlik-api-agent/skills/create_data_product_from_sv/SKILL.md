@@ -24,21 +24,46 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
      - `connectionTechnicalName`: the `technicalName` field from the connection result
      - `connectorType`: the `dataSourceId` or `type` field (e.g. `"Snowflake"`, `"qix-snowflake"`) -- this becomes `APP_TYPE`
 
-4. **Validate / provision the data asset**:
-   a. Call `mcp__qlik-local__catalog__search` with `query` set to the connection technical name and `resourceType` set to `dataasset`.
-   b. **If found**: extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`.
-   c. **If NOT found**: auto-create by calling `create_qlik_data_asset` with:
-      - `APP_TYPE`: the `connectorType` extracted from step 3 (e.g. `"Snowflake"`)
-      - `DATASTORE_ID`: the `connectionId` from step 3
-      - `DATASTORE_TECHNICAL_NAME`: the `connectionTechnicalName` from step 3
-      - `NAME`: the database name from the semantic view (e.g. `"CORTEX_DEMOS"`)
-      - `DESCRIPTION`: `"Auto-registered data asset for semantic view <semantic_view_name>"`
-      - `SPACE_ID`: the `spaceId` from step 2
-   d. Check the response:
-      - **201 (Created)**: extract `dataAssetId` from response. Store `dataAssetSource = "created-this-run"`. Add to `created_artifacts`.
-      - **409 (Conflict / already exists)**: the data asset was created concurrently. Re-search the catalog (repeat step 4a) and extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`.
-      - **Other error**: **STOP**. Report the error.
-   e. **Confirm persistence**: Re-search the catalog for the `dataAssetId` to verify it was persisted. If not found after creation, **STOP**.
+4. **Discover the data asset (NEVER skip this step)**:
+
+   The connection may already be onboarded even if a direct catalog search for `dataasset` returns nothing.
+   Follow this sequence strictly:
+
+   **4a. Direct search**: Call `mcp__qlik-local__catalog__search` with `query` set to the connection technical name (or connection ID) and `resourceType` set to `dataasset`.
+   - If found: extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`. Skip to step 5.
+
+   **4b. Discover via existing datasets**: If 4a returned nothing, search for datasets already linked to this connection. Call `mcp__qlik-local__catalog__search` with `query` set to the connection name/ID and `resourceType` set to `dataset`.
+   - If datasets are found: inspect their `qri` field. Look for the pattern `qri:db:snowflake://<hash>` or similar. These datasets prove the connection IS onboarded.
+   - Extract `dataAssetInfo.id` from any of these existing datasets — that is the `dataAssetId`.
+   - Also extract `dataAssetInfo.technicalName` — that is the real `connectionTechnicalName` (may differ from what the connection search returned).
+   - Store `dataAssetSource = "pre-existing"`. Skip to step 4e.
+
+   **4c. Last resort — create the data asset**: Only if BOTH 4a and 4b found nothing.
+   - First, resolve the `technicalName`. It MUST be a real, non-null value. Sources:
+     - The `technicalName` from the connection search in step 3 (if non-null).
+     - The `dataStoreInfo.technicalName` from any dataset found in 4b (preferred).
+     - If BOTH are null: **STOP**. Do NOT invent a technical name. Tell the user:
+       "The connection exists but has no technical name and no existing datasets. Please onboard the connection in Qlik Data Integration first, or provide the technical name manually."
+   - Call `create_qlik_data_asset` with:
+     - `APP_TYPE`: the `connectorType` from step 3
+     - `DATASTORE_ID`: the `connectionId` from step 3
+     - `DATASTORE_TECHNICAL_NAME`: the resolved technical name (MUST be non-null)
+     - `NAME`: the database name from the semantic view (e.g. `"CORTEX_DEMOS"`)
+     - `DESCRIPTION`: `"Auto-registered data asset for semantic view <name>"`
+     - `SPACE_ID`: the `spaceId` from step 2
+   - Check response:
+     - **201**: extract `dataAssetId`. Store `dataAssetSource = "created-this-run"`. Add to `created_artifacts`.
+     - **400 "technicalName must not be null or empty"**: The resolved technical name was invalid. **STOP**. Do NOT retry with a guessed name. Report the error and offer alternatives.
+     - **409 (Conflict)**: Data asset already exists. Re-search catalog (repeat 4a) and extract `dataAssetId`. Store `dataAssetSource = "pre-existing"`.
+     - **Other error**: **STOP**.
+
+   **4d. NEVER do the following**:
+   - Do NOT use `connectionId` as `dataAssetId` — they are different Qlik objects.
+   - Do NOT invent a `technicalName` if the real one is null.
+   - Do NOT retry `create_qlik_data_asset` with the same invalid payload.
+   - Do NOT proceed without a confirmed `dataAssetId`.
+
+   **4e. Confirm persistence**: Re-search the catalog for the `dataAssetId` to verify it exists. If not found, **STOP**.
 
 5. Store final values: `spaceId`, `spaceName`, `connectionId`, `connectionTechnicalName`, `dataAssetId`, `dataAssetSource`, `semanticViewName`.
 
