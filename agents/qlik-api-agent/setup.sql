@@ -5,14 +5,17 @@
 -- Prerequisites:
 --   - ACCOUNTADMIN role (for EAI and integrations)
 --   - A Qlik Cloud tenant with a valid API key
+--   - An existing EXTERNAL MCP SERVER for Qlik Cloud (optional but recommended)
 --   - Replace <QLIK_TENANT> with your tenant hostname
 --   - Replace <QLIK_API_KEY> with your Qlik API key
+--   - Replace <QLIK_MCP_SERVER> with your External MCP Server FQN (or NULL to skip)
 -- =============================================================================
 
 SET QLIK_TENANT = 'partner-engineering-saas.us.qlikcloud.com';
 SET TARGET_DB = 'TORRA';
 SET TARGET_SCHEMA = 'PUBLIC';
 SET WAREHOUSE = 'COMPUTE';
+SET QLIK_MCP_SERVER = 'TORRA.PUBLIC.QLIK_MCP_SERVER';  -- FQN of existing EXTERNAL MCP SERVER
 
 USE ROLE ACCOUNTADMIN;
 USE DATABASE IDENTIFIER($TARGET_DB);
@@ -190,7 +193,7 @@ instructions:
     You can create Qlik apps, register data sets, set app load scripts, and inspect
     Snowflake semantic views via procedure-backed tools. Additional Qlik operations
     (list spaces, create glossaries/terms, create data products) are available via
-    the Qlik MCP server registered in CoCo.
+    the Qlik MCP server attached to this agent.
     When asked to create a data product from a semantic view, load and follow the
     create_data_product_from_sv skill step by step.
   orchestration: >
@@ -284,10 +287,33 @@ skills:
     source:
       type: STAGE
       path: "@AGENT_SKILLS_STAGE/create_data_product_from_sv"
+mcp_servers:
+  - server_spec:
+      name: "QLIK_MCP_SERVER"
 $$;
 
 -- =============================================================================
--- 7. Test the agent
+-- 7. Register agent in Snowflake CoWork
+-- =============================================================================
+-- If your account has a Snowflake CoWork object, add the agent to make it
+-- visible in CoWork. Skip if no CoWork object exists (agents are still
+-- accessible via SQL/REST API and direct link in Snowsight).
+--
+-- To check if a CoWork object exists:
+--   SHOW SNOWFLAKE INTELLIGENCE;
+--
+-- To create one if needed:
+--   CREATE SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
+--
+-- Add the agent:
+ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
+  ADD AGENT QLIK_API_AGENT;
+
+-- Grant USAGE so users can see and use the agent in CoWork:
+-- GRANT USAGE ON AGENT QLIK_API_AGENT TO ROLE <user_role>;
+
+-- =============================================================================
+-- 8. Test the agent
 -- =============================================================================
 -- SELECT TRY_PARSE_JSON(
 --   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(

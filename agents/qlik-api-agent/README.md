@@ -52,6 +52,7 @@ These are provided by the Qlik MCP server registered in CoCo and used by the ski
 - Snowflake account with ACCOUNTADMIN role
 - Qlik Cloud tenant with a valid API key
 - Qlik MCP server registered in CoCo (for spaces, glossaries, data products)
+- An existing `EXTERNAL MCP SERVER` object in Snowflake pointing to the Qlik MCP server (for server-side agent execution via CoWork/SQL)
 - Warehouse for procedure execution
 
 ## Setup
@@ -59,6 +60,7 @@ These are provided by the Qlik MCP server registered in CoCo and used by the ski
 1. Edit `setup.sql` and replace:
    - `<QLIK_API_KEY>` with your Qlik Cloud API key
    - `$QLIK_TENANT` with your tenant hostname (default: `partner-engineering-saas.us.qlikcloud.com`)
+   - `$QLIK_MCP_SERVER` with the FQN of your existing External MCP Server for Qlik
    - `$TARGET_DB` / `$TARGET_SCHEMA` with your target database/schema
    - `$WAREHOUSE` with your warehouse name
 
