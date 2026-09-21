@@ -21,6 +21,8 @@ snowflake-examples/
 │   └── qlik-connector-app/         #   Boilerplate Native App with Qlik MCP
 ├── agents/                         # Cortex Agents with external API integrations
 │   └── qlik-api-agent/            #   Qlik Cloud REST API agent (apps, datasets, glossaries, data products)
+├── automate/                       # Qlik Automate workflow integrations
+│   └── qlik-automate-agent-orchestration/  # Qlik Automate → Cortex Agent freshness SLA monitor
 ├── skills/                         # Cortex Code skills
 ```
 
@@ -57,6 +59,10 @@ See the [mcp README](mcp/README.md) for OAuth setup, troubleshooting, and agent 
 ### Agents (`agents/`)
 
 - **[Qlik API Agent](agents/qlik-api-agent/)** — Cortex Agent that calls the Qlik Cloud REST API via stored procedures backed by an External Access Integration. Includes 8 tools (create apps, register datasets, set load scripts, list spaces, create glossaries/terms, create data products, inspect semantic views) and a skill that orchestrates end-to-end data product creation from a Snowflake Semantic View.
+
+### Qlik Automate (`automate/`)
+
+- **[Qlik Automate Agent Orchestration](automate/qlik-automate-agent-orchestration/)** — A Qlik Automate workflow that calls a Snowflake Cortex Agent via the REST API to monitor data freshness SLAs. On breach, the workflow sends Slack alerts, triggers Qlik app reloads as remediation, and writes audit records back to Snowflake. Includes the agent SQL, an importable Qlik Automate workflow definition, and a setup guide.
 
 ### Skills (`skills/`)
 
