@@ -295,7 +295,7 @@ If no glossary exists, skip this step.
 
 Present:
 - **App**: name, ID, space
-- **Open your app**: `https://partner-engineering-saas.us.qlikcloud.com/sense/app/<appId>` (clickable link)
+- **Open your app**: `https://<tenant>/sense/app/<appId>` (use the Qlik tenant from the data connection URL)
 - **Data Product**: source name, ID
 - **Connection**: name used in load script
 - **Load Script**: number of tables, whether glossary comments were included

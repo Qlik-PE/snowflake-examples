@@ -11,11 +11,12 @@
 --   - Replace <QLIK_MCP_SERVER> with your External MCP Server FQN (or NULL to skip)
 -- =============================================================================
 
-SET QLIK_TENANT = 'partner-engineering-saas.us.qlikcloud.com';
-SET TARGET_DB = 'TORRA';
-SET TARGET_SCHEMA = 'PUBLIC';
-SET WAREHOUSE = 'COMPUTE';
-SET QLIK_MCP_SERVER = 'QLIK_MCP_DB.PUBLIC.QLIK_MCP_SERVER';  -- FQN of existing EXTERNAL MCP SERVER
+-- >>> CONFIGURE THESE VARIABLES BEFORE RUNNING <<<
+SET QLIK_TENANT = '<your-tenant>.us.qlikcloud.com';           -- Qlik Cloud tenant hostname
+SET TARGET_DB = '<your-database>';                             -- Database to create objects in
+SET TARGET_SCHEMA = 'PUBLIC';                                  -- Schema to create objects in
+SET WAREHOUSE = '<your-warehouse>';                            -- Warehouse for procedure execution
+SET QLIK_MCP_SERVER = '<db>.<schema>.<mcp_server_name>';       -- FQN of existing EXTERNAL MCP SERVER
 
 USE ROLE ACCOUNTADMIN;
 USE DATABASE IDENTIFIER($TARGET_DB);
@@ -51,8 +52,8 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION QLIK_CLOUD_EAI
 -- 4a. Create Qlik App (POST /api/v1/apps)
 CREATE OR REPLACE PROCEDURE CREATE_QLIK_APP(
   APP_NAME VARCHAR,
-  APP_DESCRIPTION VARCHAR DEFAULT '',
-  SPACE_ID VARCHAR DEFAULT NULL
+  SPACE_ID VARCHAR,
+  APP_DESCRIPTION VARCHAR DEFAULT ''
 )
 RETURNS VARIANT
 LANGUAGE PYTHON
@@ -66,16 +67,15 @@ $$
 import _snowflake
 import requests
 
-def create_app(session, app_name, app_description='', space_id=None):
+def create_app(session, app_name, space_id, app_description=''):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    url = f'https://{session.sql("SELECT $QLIK_TENANT").collect()[0][0]}/api/v1/apps'
+    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    url = f'https://{tenant}/api/v1/apps'
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     attributes = {'name': app_name}
     if app_description:
         attributes['description'] = app_description
-    body = {'attributes': attributes}
-    if space_id:
-        body['spaceId'] = space_id
+    body = {'attributes': attributes, 'spaceId': space_id}
     resp = requests.post(url, headers=headers, json=body)
     try:
         return {'status_code': resp.status_code, 'response': resp.json()}
@@ -167,8 +167,8 @@ $$;
 -- and creates the dataset in a single call (no QRI/dataAsset discovery needed).
 CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
     DB VARCHAR, SCH VARCHAR, TBL VARCHAR,
-    SPACE_ID VARCHAR DEFAULT '60d23b10073cb60001e69ab4',
-    CONNECTION_ID VARCHAR DEFAULT 'fe1bdad2-5b26-466a-b648-778258586334',
+    SPACE_ID VARCHAR DEFAULT NULL,
+    CONNECTION_ID VARCHAR DEFAULT NULL,
     SF_ROLE VARCHAR DEFAULT 'QLIK_DATA_PRODUCT'
 )
   RETURNS VARIANT
@@ -277,8 +277,9 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
+    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
     resp = requests.post(
-        "https://partner-engineering-saas.us.qlikcloud.com/api/v1/catalog/"
+        f"https://{tenant}/api/v1/catalog/"
         "catalog-integration/actions/create-hierarchy-for-connected-datasets",
         headers={
             "Authorization": f"Bearer {api_key}",
@@ -315,7 +316,7 @@ import json
 
 def link_glossary(session, data_product_id, glossary_id):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = 'partner-engineering-saas.us.qlikcloud.com'
+    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
     url = f'https://{tenant}/api/data-governance/data-products/{data_product_id}'
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -363,7 +364,7 @@ import time
 
 def reload_app(session, app_id):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = 'partner-engineering-saas.us.qlikcloud.com'
+    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
@@ -455,16 +456,21 @@ instructions:
     Additional Qlik operations (list spaces, search catalog, create glossaries/terms,
     create data products, manage dimensions/measures, create sheets/charts, reload apps)
     are available via the Qlik MCP server attached to this agent.
-    When asked to create a data product from a semantic view, load and follow the
-    create_data_product_from_sv skill step by step. Follow every GATE.
-    When asked to create a Qlik Sense app from a data product, load and follow the
-    create_app_from_data_product skill step by step. Follow every GATE.
+    You have two skills whose instructions are already in your context (do NOT try to
+    call server_skill or any skill-loading tool — just follow the instructions directly):
+    - create_data_product_from_sv: Follow when the user asks to create a data product
+      from a semantic view. Execute every step in order. Respect every GATE.
+    - create_app_from_data_product: Follow when the user asks to create a Qlik Sense
+      app from a data product. Execute every step in order. Respect every GATE.
   orchestration: >
     Use the appropriate tool for each operation.
-    When the user asks to create a data product from a semantic view, load and follow
-    the create_data_product_from_sv skill strictly in order. Respect every GATE.
-    When the user asks to create a Qlik app from a data product, load and follow
-    the create_app_from_data_product skill strictly in order. Respect every GATE.
+    IMPORTANT: The skills create_data_product_from_sv and create_app_from_data_product
+    are already loaded in your context. Do NOT call server_skill to load them. Just
+    follow the skill instructions directly.
+    When the user asks to create a data product from a semantic view, follow the
+    create_data_product_from_sv skill strictly in order. Respect every GATE.
+    When the user asks to create a Qlik app from a data product, follow the
+    create_app_from_data_product skill strictly in order. Respect every GATE.
     If a step fails, follow the rollback instructions.
     For dataset creation, always prefer create_qlik_dataset which handles
     column discovery, type mapping, and the API call in a single step.
@@ -472,20 +478,20 @@ tools:
   - tool_spec:
       type: generic
       name: create_qlik_app
-      description: "Creates a new Qlik Sense app via POST /api/v1/apps"
+      description: "Creates a new Qlik Sense app in a specified space. SPACE_ID is required."
       input_schema:
         type: object
         properties:
           APP_NAME:
             type: string
             description: "Name of the Qlik app"
+          SPACE_ID:
+            type: string
+            description: "Target space ID - REQUIRED, app will fail without this"
           APP_DESCRIPTION:
             type: string
             description: "Description (optional)"
-          SPACE_ID:
-            type: string
-            description: "Space ID (optional)"
-        required: [APP_NAME]
+        required: [APP_NAME, SPACE_ID]
   - tool_spec:
       type: generic
       name: set_qlik_app_script

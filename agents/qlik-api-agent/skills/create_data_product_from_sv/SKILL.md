@@ -91,12 +91,8 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
    - `spaceId`: the spaceId from Step 0
 2. Capture `dataProductId`. Add `{type: "data_product", id: <id>}` to `created_artifacts`.
    - If creation fails: **STOP**. Datasets and glossary remain as standalone assets.
-3. **Activate**: Call `data_products__activate` with:
-   - `dataProductId`: the data product ID
-   - `name`: the data product name (same as used in step 1)
-   - If activation fails: Leave as draft. Report to user.
 
-**GATE 4**: Data product created.
+**GATE 4**: Data product created (in draft).
 
 ### Step 5: Update Data Product Documentation
 
