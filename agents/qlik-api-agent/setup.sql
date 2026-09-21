@@ -295,6 +295,55 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 $$;
 
+-- 4f. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
+CREATE OR REPLACE PROCEDURE LINK_GLOSSARY_TO_DATA_PRODUCT(
+  DATA_PRODUCT_ID VARCHAR,
+  GLOSSARY_ID VARCHAR
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.10'
+HANDLER = 'link_glossary'
+EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
+PACKAGES = ('snowflake-snowpark-python', 'requests')
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+AS
+$$
+import _snowflake
+import requests
+import json
+
+def link_glossary(session, data_product_id, glossary_id):
+    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
+    tenant = 'partner-engineering-saas.us.qlikcloud.com'
+    url = f'https://{tenant}/api/data-governance/data-products/{data_product_id}'
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+
+    # GET current glossaryIds
+    get_resp = requests.get(url, headers=headers)
+    if get_resp.status_code != 200:
+        return {'linked': False, 'error': f'GET failed: {get_resp.status_code}'}
+
+    dp = get_resp.json()
+    existing = dp.get('glossaryIds', []) or []
+    if glossary_id in existing:
+        return {'linked': True, 'message': 'Already linked'}
+    existing.append(glossary_id)
+
+    # PATCH with replace on /glossaryIds
+    patches = [{"op": "replace", "path": "/glossaryIds", "value": existing}]
+    resp = requests.patch(url, headers=headers, data=json.dumps(patches))
+    return {
+        'status_code': resp.status_code,
+        'linked': resp.status_code == 204,
+        'data_product_id': data_product_id,
+        'glossary_id': glossary_id
+    }
+$$;
+
 -- NOTE: The following Qlik operations are handled by the Qlik MCP server
 -- registered in CoCo, not by stored procedures:
 --   - List spaces:           mcp__qlik-local__spaces__list
@@ -446,7 +495,27 @@ tools:
             type: string
             description: "Table name"
         required: [DATABASE_NAME, SCHEMA_NAME, TABLE_NAME]
+  - tool_spec:
+      type: generic
+      name: link_glossary_to_data_product
+      description: "Links a Qlik glossary to a data product so it appears in the Qlik Cloud UI"
+      input_schema:
+        type: object
+        properties:
+          DATA_PRODUCT_ID:
+            type: string
+            description: "The Qlik data product ID"
+          GLOSSARY_ID:
+            type: string
+            description: "The Qlik glossary ID to link"
+        required: [DATA_PRODUCT_ID, GLOSSARY_ID]
 tool_resources:
+  link_glossary_to_data_product:
+    type: procedure
+    identifier: LINK_GLOSSARY_TO_DATA_PRODUCT
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE
   create_qlik_app:
     type: procedure
     identifier: CREATE_QLIK_APP

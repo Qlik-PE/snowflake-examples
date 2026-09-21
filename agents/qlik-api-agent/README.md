@@ -28,6 +28,7 @@ Cortex Agent (QLIK_API_AGENT)
 | `create_qlik_app` | `CREATE_QLIK_APP` | `POST /api/v1/apps` |
 | `create_qlik_dataset` | `CREATE_QLIK_DATASET` | `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` |
 | `set_qlik_app_script` | `SET_QLIK_APP_SCRIPT` | `POST /api/v1/apps/{appId}/scripts` |
+| `link_glossary_to_data_product` | `LINK_GLOSSARY_TO_DATA_PRODUCT` | `PATCH /api/data-governance/data-products/{id}` (JSON Patch: add linkedGlossaryIds) |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL()` |
 
 ### CoCo MCP tools (Qlik MCP server)

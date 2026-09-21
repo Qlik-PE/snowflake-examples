@@ -160,12 +160,16 @@ Write comprehensive documentation into the data product description that capture
    - **Facts**: from the `facts (...)` section — include fact name, owning table, and comment.
    - **Key Dimensions**: from the `dimensions (...)` section — include a representative set (skip key columns like `*_ID` that are already in the relationships table; focus on descriptive dimensions).
 
-2. Call `data_products__update` with:
+2. Call `link_glossary_to_data_product` with:
+   - `DATA_PRODUCT_ID`: the data product ID
+   - `GLOSSARY_ID`: the glossary ID from Step 3
+   This links the glossary to the data product so it appears in the Qlik Cloud UI.
+
+3. Call `data_products__update` with:
    - `dataProductId`: the data product ID
-   - `glossaryId`: the glossary ID from Step 3 — this links the glossary to the data product so it appears in the Qlik Cloud UI
    - `readme`: the full Markdown documentation string built above
 
-3. Report: "Data product documentation updated with data model, relationships, metrics, facts, and dimensions. Glossary linked."
+4. Report: "Data product documentation updated with data model, relationships, metrics, facts, and dimensions. Glossary linked."
 
 **GATE 5**: Data product documentation updated with semantic view knowledge.
 
