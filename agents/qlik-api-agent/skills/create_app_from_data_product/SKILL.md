@@ -5,7 +5,12 @@ description: Creates a Qlik Sense app from an existing Qlik Data Product. Genera
 
 ## Workflow: Create Qlik Sense App from Data Product
 
-**MCP Server**: This skill uses the Qlik MCP server attached to this agent. All tool names below (e.g. `catalog__search`, `apps__create`) refer to tools provided by that server. Tools `get_semantic_view_ddl`, `get_table_columns`, and `create_qlik_dataset` are stored-procedure tools registered directly on this agent.
+**MCP Server**: This skill uses the Qlik MCP server attached to this agent. All tool names below (e.g. `catalog__search`, `apps__create`) refer to tools provided by that server. Tools `create_qlik_app`, `set_qlik_app_script`, `get_semantic_view_ddl`, `get_table_columns`, `create_qlik_dataset`, and `link_glossary_to_data_product` are stored-procedure tools registered directly on this agent.
+
+**IMPORTANT RULES**:
+- **Never create test/throwaway objects** (glossaries, apps, sheets) to probe tool names. If a tool call fails, report the error — do not create dummy objects as workarounds.
+- **Always pass SPACE_ID** when creating apps. Never omit it — omitting it creates the app in personal space.
+- Use stored procedure tool names exactly as listed above (e.g. `create_qlik_app`, not `apps__create`) for the stored procedure tools.
 
 Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to the next step if the current step fails -- follow the rollback instructions instead.
 
@@ -155,17 +160,18 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 3. Concatenate all blocks into a single `fullScript` string separated by blank lines.
 
-4. Call `apps__create` with:
-   - `name`: "<dataProductName> Analytics"
-   - `description`: "Auto-generated Qlik Sense app from data product: <dataProductName>"
-   - `spaceId`: the `appSpaceId` from Step 0
+4. **Create the app** — Call `create_qlik_app` (stored procedure tool) with:
+   - `APP_NAME`: "<dataProductName> Analytics"
+   - `APP_DESCRIPTION`: "Auto-generated Qlik Sense app from data product: <dataProductName>"
+   - `SPACE_ID`: the `appSpaceId` from Step 0. **THIS IS MANDATORY — never omit SPACE_ID. If SPACE_ID is omitted the app lands in the personal space which is wrong.**
 5. Capture `appId` from the response. Add `{type: "app", id: <appId>}` to `created_artifacts`.
    - If creation fails: **STOP**.
+   - **Verify** the app was created in the correct space by checking the response. If it was created in personal space, **ROLLBACK** and retry with the correct SPACE_ID.
 
-6. Call `apps__set_script` with:
-   - `appId`: the app ID
-   - `script`: the `fullScript`
-   - `reload`: `false` (we will reload separately in Step 3)
+6. Call `set_qlik_app_script` (stored procedure tool) with:
+   - `APP_ID`: the `appId`
+   - `SCRIPT`: the `fullScript`
+   - `VERSION_MESSAGE`: "Initial load script from data product: <dataProductName>"
    - If this fails: **ROLLBACK**.
 
 **GATE 2**: App created with load script set (including glossary comments).

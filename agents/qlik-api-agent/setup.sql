@@ -344,6 +344,68 @@ def link_glossary(session, data_product_id, glossary_id):
     }
 $$;
 
+-- 4g. Reload Qlik App (POST /api/v1/reloads)
+CREATE OR REPLACE PROCEDURE RELOAD_QLIK_APP(
+  APP_ID VARCHAR
+)
+RETURNS VARIANT
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.10'
+HANDLER = 'reload_app'
+EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
+PACKAGES = ('snowflake-snowpark-python', 'requests')
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+AS
+$$
+import _snowflake
+import requests
+import time
+
+def reload_app(session, app_id):
+    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
+    tenant = 'partner-engineering-saas.us.qlikcloud.com'
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+
+    # Trigger reload
+    url = f'https://{tenant}/api/v1/reloads'
+    body = {'appId': app_id}
+    resp = requests.post(url, headers=headers, json=body)
+
+    if resp.status_code not in (200, 201):
+        try:
+            return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.json()}
+        except:
+            return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.text}
+
+    reload = resp.json()
+    reload_id = reload.get('id', '')
+    status = reload.get('status', '')
+
+    # Poll for completion (max 5 minutes)
+    poll_url = f'https://{tenant}/api/v1/reloads/{reload_id}'
+    for i in range(30):
+        if status in ('SUCCEEDED', 'FAILED', 'CANCELED', 'EXCEEDED_LIMIT'):
+            break
+        time.sleep(10)
+        poll_resp = requests.get(poll_url, headers=headers)
+        if poll_resp.status_code == 200:
+            reload = poll_resp.json()
+            status = reload.get('status', '')
+
+    return {
+        'status_code': resp.status_code,
+        'reloaded': status == 'SUCCEEDED',
+        'reload_id': reload_id,
+        'reload_status': status,
+        'app_id': app_id,
+        'duration': reload.get('duration', ''),
+        'error': reload.get('log', '') if status == 'FAILED' else None
+    }
+$$;
+
 -- NOTE: The following Qlik operations are handled by the Qlik MCP server
 -- registered in CoCo, not by stored procedures:
 --   - List spaces:           mcp__qlik-local__spaces__list
@@ -509,7 +571,24 @@ tools:
             type: string
             description: "The Qlik glossary ID to link"
         required: [DATA_PRODUCT_ID, GLOSSARY_ID]
+  - tool_spec:
+      type: generic
+      name: reload_qlik_app
+      description: "Triggers a data reload for a Qlik app and waits for completion (up to 5 minutes)"
+      input_schema:
+        type: object
+        properties:
+          APP_ID:
+            type: string
+            description: "The Qlik app ID to reload"
+        required: [APP_ID]
 tool_resources:
+  reload_qlik_app:
+    type: procedure
+    identifier: RELOAD_QLIK_APP
+    execution_environment:
+      type: warehouse
+      warehouse: COMPUTE
   link_glossary_to_data_product:
     type: procedure
     identifier: LINK_GLOSSARY_TO_DATA_PRODUCT
