@@ -46,10 +46,11 @@ These are provided by the Qlik MCP server registered in CoCo and used by the ski
 | Skill | Description |
 |-------|-------------|
 | `create_data_product_from_sv` | End-to-end workflow: inspect a Snowflake Semantic View, create Qlik datasets for each base table, create an app with load script, create a glossary with terms, and create a data product. |
+| `create_app_from_data_product` | End-to-end workflow: discover a Qlik Data Product by name, generate a load script from dataset metadata, create a Qlik Sense app, reload it, create master dimensions and measures from the glossary, and build a default analytics sheet with KPIs, bar chart, line chart, and table. |
 
 ## Dataset Creation: `CREATE_QLIK_DATASET`
 
-Uses `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` -- the same undocumented endpoint that the Qlik Cloud UI uses when you add a dataset through the browser. This approach:
+This approach:
 
 - Creates the dataset in a **single call** (no QRI/dataAsset discovery needed)
 - Auto-discovers table metadata from Snowflake `INFORMATION_SCHEMA.COLUMNS`
@@ -153,6 +154,8 @@ qlik-api-agent/
   skills/
     create_data_product_from_sv/
       SKILL.md                                 -- Data product creation workflow
+    create_app_from_data_product/
+      SKILL.md                                 -- App creation from data product workflow
 ```
 
 ## Adding New Qlik API Endpoints

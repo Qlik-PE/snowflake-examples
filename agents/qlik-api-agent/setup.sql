@@ -15,7 +15,7 @@ SET QLIK_TENANT = 'partner-engineering-saas.us.qlikcloud.com';
 SET TARGET_DB = 'TORRA';
 SET TARGET_SCHEMA = 'PUBLIC';
 SET WAREHOUSE = 'COMPUTE';
-SET QLIK_MCP_SERVER = 'TORRA.PUBLIC.QLIK_MCP_SERVER';  -- FQN of existing EXTERNAL MCP SERVER
+SET QLIK_MCP_SERVER = 'QLIK_MCP_DB.PUBLIC.QLIK_MCP_SERVER';  -- FQN of existing EXTERNAL MCP SERVER
 
 USE ROLE ACCOUNTADMIN;
 USE DATABASE IDENTIFIER($TARGET_DB);
@@ -318,6 +318,17 @@ $$)
   FILE_FORMAT = (TYPE = CSV COMPRESSION = NONE RECORD_DELIMITER = NONE FIELD_DELIMITER = NONE)
   OVERWRITE = TRUE SINGLE = TRUE;
 
+COPY INTO @AGENT_SKILLS_STAGE/create_app_from_data_product/SKILL.md
+  FROM (SELECT $$---
+name: create_app_from_data_product
+description: Creates a Qlik Sense app from an existing Qlik Data Product. Generates a load script from dataset metadata, creates master dimensions and measures from the glossary, builds a default analytics sheet with charts, and reloads the app.
+---
+
+Follow the steps in the skill file at skills/create_app_from_data_product/SKILL.md
+$$)
+  FILE_FORMAT = (TYPE = CSV COMPRESSION = NONE RECORD_DELIMITER = NONE FIELD_DELIMITER = NONE)
+  OVERWRITE = TRUE SINGLE = TRUE;
+
 -- =============================================================================
 -- 6. Create the Agent
 -- =============================================================================
@@ -331,13 +342,18 @@ instructions:
     You can create Qlik apps, register data sets, set app load scripts, inspect
     Snowflake semantic views, and get table column metadata.
     Additional Qlik operations (list spaces, search catalog, create glossaries/terms,
-    create data products) are available via the Qlik MCP server attached to this agent.
+    create data products, manage dimensions/measures, create sheets/charts, reload apps)
+    are available via the Qlik MCP server attached to this agent.
     When asked to create a data product from a semantic view, load and follow the
     create_data_product_from_sv skill step by step. Follow every GATE.
+    When asked to create a Qlik Sense app from a data product, load and follow the
+    create_app_from_data_product skill step by step. Follow every GATE.
   orchestration: >
     Use the appropriate tool for each operation.
     When the user asks to create a data product from a semantic view, load and follow
     the create_data_product_from_sv skill strictly in order. Respect every GATE.
+    When the user asks to create a Qlik app from a data product, load and follow
+    the create_app_from_data_product skill strictly in order. Respect every GATE.
     If a step fails, follow the rollback instructions.
     For dataset creation, always prefer create_qlik_dataset which handles
     column discovery, type mapping, and the API call in a single step.
@@ -466,9 +482,13 @@ skills:
     source:
       type: STAGE
       path: "@AGENT_SKILLS_STAGE/create_data_product_from_sv"
+  - name: create_app_from_data_product
+    source:
+      type: STAGE
+      path: "@AGENT_SKILLS_STAGE/create_app_from_data_product"
 mcp_servers:
   - server_spec:
-      name: "QLIK_MCP_SERVER"
+      name: "QLIK_MCP_DB.PUBLIC.QLIK_MCP_SERVER"
 $$;
 
 -- =============================================================================
