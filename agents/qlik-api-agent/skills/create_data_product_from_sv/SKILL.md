@@ -8,20 +8,24 @@ description: Creates a Qlik Data Product from a Snowflake Semantic View. Registe
 **MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `get_semantic_view_ddl`, `get_table_columns`, and `create_qlik_dataset` are stored-procedure tools registered directly on this agent — call them by their exact names.
 
 **MCP Tool Name Resolution (MANDATORY before calling any MCP tool):**
-The External MCP Server mangles tool names by prepending a truncated server identifier. The short names used in this skill (e.g. `catalog__search`, `spaces__list`, `data_products__create`) will NOT match the actual registered tool names.
+The External MCP Server prepends a truncated server identifier to each tool name. The official Qlik MCP tool names (from Qlik Cloud documentation) are listed below. The actual registered names in your tool list will have a server prefix added, but end with the official name.
 
-Before your first MCP tool call, list all available tools and build a mapping from the short names in this skill to the actual mangled names. For example:
-- `catalog__search` → the tool whose name ends in `_qlik_search` or `_qlikclou_qlik_search`
-- `spaces__list` → the tool whose name ends in `_qlik_list_spaces`
-- `glossaries__create` → the tool whose name ends in `_qlik_create_glossary`
-- `glossaries__create_term` → the tool whose name ends in `_qlik_create_glossary_term`
-- `data_products__create` → the tool whose name ends in `_qlik_create_data_product`
-- `data_products__get` → the tool whose name ends in `_qlik_get_data_product`
-- `data_products__update` → the tool whose name ends in `_qlik_update_data_product`
-- `datasets__get` → the tool whose name ends in `_qlik_get_dataset`
-- `catalog__delete` → the tool whose name ends in `_qlik_delete`
+Before your first MCP tool call, list all available tools and build a mapping from the official names below to the actual prefixed names in your tool list. Match by **suffix**.
 
-Match by the **suffix** — the part after the server prefix. Use the actual mangled names in all subsequent tool calls. If a tool call returns "not found", check the available tools list again for the correct mangled name.
+Official Qlik MCP tool names used by this skill:
+- `qlik_search` — Search for resources (apps, datasets, data products, glossaries, spaces, etc.)
+- `qlik_search_spaces` — Search for spaces
+- `qlik_create_glossary` — Create a new business glossary
+- `qlik_create_glossary_term` — Create a new glossary term
+- `qlik_get_full_glossary_export` — Export complete glossary with all terms
+- `qlik_create_data_product` — Create a new data product
+- `qlik_get_data_product` — Get metadata for a data product
+- `qlik_update_data_product` — Update data product properties (name, description, readme, datasets)
+- `qlik_delete_data_product` — Delete a data product
+- `qlik_get_dataset` — Get dataset metadata
+- `qlik_get_dataset_schema` — Get dataset column definitions
+
+Use the actual prefixed names in all tool calls. If a call returns "not found", re-check your tools list for the correct prefixed name.
 
 Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to the next step if the current step fails -- follow the rollback instructions instead.
 
@@ -34,12 +38,12 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
    - The **Snowflake data connection name** in Qlik Cloud (e.g. `Snowflake_PROD`). This is the name shown in Qlik Management Console > Data sources. If not provided, ask.
 
 2. **Resolve the data connection ID**:
-   - Call `catalog__search` with `query` set to the connection name provided by the user and `resourceType` set to `dataconnection`.
+   - Call `qlik_search` with `query` set to the connection name provided by the user and `resourceType` set to `dataconnection`.
    - From the results, find the item whose `name` matches the user-provided connection name (case-insensitive).
    - Extract `resourceId` from the matching item — this is the `connectionId`.
    - If no match is found, report the error and list any partial matches so the user can correct the name. **STOP** until a valid connection name is provided.
 
-3. Call `spaces__list` to list available Qlik spaces. Present them and ask the user to **choose a target space**. Store `spaceId` and `spaceName`.
+3. Call `qlik_search_spaces` to list available Qlik spaces. Present them and ask the user to **choose a target space**. Store `spaceId` and `spaceName`.
 
 4. Store final values: `spaceId`, `spaceName`, `semanticViewName`, `connectionId`.
 
@@ -87,13 +91,13 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 
 ### Step 3: Create Glossary with documentation
 
-1. Call `glossaries__create` with:
+1. Call `qlik_create_glossary` with:
    - `name`: "Glossary - <semantic_view_short_name>"
    - `description`: "Business glossary from Snowflake Semantic View <full_name>"
    - `spaceId`: the `spaceId` from Step 0 — **must match the data product space**
 2. Capture `glossaryId`. Add `{type: "glossary", id: <id>}` to `created_artifacts`.
 3. Create a term for the **semantic view itself** using its top-level `comment=`.
-4. For each fact, dimension, and metric that has a `comment=`, call `glossaries__create_term` with:
+4. For each fact, dimension, and metric that has a `comment=`, call `qlik_create_glossary_term` with:
    - `glossaryId`: the glossary ID
    - `name`: the alias name from the DDL
    - `description`: the comment text
@@ -102,7 +106,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 
 ### Step 4: Create Data Product
 
-1. Call `data_products__create` with:
+1. Call `qlik_create_data_product` with:
    - `name`: "<semantic_view_short_name> Data Product"
    - `description`: "Data product from Snowflake Semantic View <full_name>. Contains <N> datasets and a business glossary."
    - `spaceId`: the spaceId from Step 0
@@ -189,7 +193,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
    - **Facts**: from the `facts (...)` section — include fact name, owning table, and comment.
    - **Key Dimensions**: from the `dimensions (...)` section — include a representative set (skip key columns like `*_KEY` that are already in the relationships table; focus on descriptive dimensions).
 
-2. Call `data_products__update` with:
+2. Call `qlik_update_data_product` with:
    - `dataProductId`: the data product ID from Step 4
    - `readme`: the full Markdown documentation string built above
    - `glossaryId`: the glossary ID from Step 3 (this links the glossary)
@@ -204,11 +208,11 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 
 ### Step 6: Post-execution verification
 
-1. Call `data_products__get` with `dataProductId` to confirm:
+1. Call `qlik_get_data_product` with `dataProductId` to confirm:
    - Status (active/draft)
    - Number of linked datasets matches expected count
-2. For each dataset ID, call `datasets__get` to confirm it exists.
-3. Call `catalog__search` with `query=<glossary_name>` to confirm the glossary is in the catalog.
+2. For each dataset ID, call `qlik_get_dataset` to confirm it exists.
+3. Call `qlik_search` with `query=<glossary_name>` to confirm the glossary is in the catalog.
 
 Report any discrepancies.
 
@@ -229,7 +233,7 @@ If rollback is needed at any point:
 1. List all entries in `created_artifacts` (in creation order).
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
 3. If user confirms, delete in **reverse** order:
-   - Data product: `data_products__delete` with `dataProductId`
-   - Glossary: `catalog__delete` with the glossary item ID
-   - Datasets: `catalog__delete` for each dataset item ID
+   - Data product: `qlik_delete_data_product` with `dataProductId`
+   - Glossary: `qlik_delete_data_product` with the glossary item ID
+   - Datasets: `qlik_delete_data_product` for each dataset item ID
 4. Confirm deletion of each artifact.

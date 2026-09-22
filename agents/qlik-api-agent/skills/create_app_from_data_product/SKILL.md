@@ -8,25 +8,28 @@ description: Creates a Qlik Sense app from an existing Qlik Data Product. Genera
 **MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `create_qlik_app`, `set_qlik_app_script`, `get_semantic_view_ddl`, `get_table_columns`, `create_qlik_dataset`, and `link_glossary_to_data_product` are stored-procedure tools registered directly on this agent — call them by their exact names.
 
 **MCP Tool Name Resolution (MANDATORY before calling any MCP tool):**
-The External MCP Server mangles tool names by prepending a truncated server identifier. The short names used in this skill (e.g. `catalog__search`, `data_products__get`) will NOT match the actual registered tool names.
+The External MCP Server prepends a truncated server identifier to each tool name. The official Qlik MCP tool names (from Qlik Cloud documentation) are listed below. The actual registered names in your tool list will have a server prefix added, but end with the official name.
 
-Before your first MCP tool call, list all available tools and build a mapping from the short names in this skill to the actual mangled names. For example:
-- `catalog__search` → the tool whose name ends in `_qlik_search` or `_qlikclou_qlik_search`
-- `catalog__update` → the tool whose name ends in `_qlik_update`
-- `spaces__list` → the tool whose name ends in `_qlik_list_spaces`
-- `data_products__get` → the tool whose name ends in `_qlik_get_data_product`
-- `data_products__get_documentation` → the tool whose name ends in `_qlik_get_data_product_documentation`
-- `datasets__get` → the tool whose name ends in `_qlik_get_dataset`
-- `datasets__get_schema` → the tool whose name ends in `_qlik_get_dataset_schema`
-- `glossaries__export` → the tool whose name ends in `_qlik_export_glossary`
-- `glossaries__create_term` → the tool whose name ends in `_qlik_create_glossary_term`
-- `dimensions__create` → the tool whose name ends in `_qlik_create_dimension`
-- `measures__create` → the tool whose name ends in `_qlik_create_measure`
-- `sheets__create` → the tool whose name ends in `_qlik_create_sheet`
-- `charts__add` → the tool whose name ends in `_qlik_add_chart`
-- `apps__reload` → the tool whose name ends in `_qlik_reload_app`
+Before your first MCP tool call, list all available tools and build a mapping from the official names below to the actual prefixed names in your tool list. Match by **suffix**.
 
-Match by the **suffix** — the part after the server prefix. Use the actual mangled names in all subsequent tool calls. If a tool call returns "not found", check the available tools list again for the correct mangled name.
+Official Qlik MCP tool names used by this skill:
+- `qlik_search` — Search for resources (apps, datasets, data products, glossaries, spaces, etc.)
+- `qlik_search_spaces` — Search for spaces
+- `qlik_describe_app` — Get app metadata
+- `qlik_get_data_product` — Get data product metadata
+- `qlik_get_data_product_documentation` — Get data product README documentation
+- `qlik_update_data_product` — Update data product properties
+- `qlik_get_dataset` — Get dataset metadata
+- `qlik_get_dataset_schema` — Get dataset column definitions
+- `qlik_get_full_glossary_export` — Export complete glossary with all terms
+- `qlik_create_glossary_term` — Create a glossary term
+- `qlik_create_dimension` — Create a reusable library dimension
+- `qlik_create_measure` — Create a reusable library measure
+- `qlik_create_sheet` — Create a new sheet
+- `qlik_add_chart` — Add a chart to a sheet
+- `qlik_add_filter` — Add a filter panel to a sheet
+
+Use the actual prefixed names in all tool calls. If a call returns "not found", re-check your tools list for the correct prefixed name.
 
 **IMPORTANT RULES**:
 - **Never create test/throwaway objects** (glossaries, apps, sheets) to probe tool names. If a tool call fails, report the error — do not create dummy objects as workarounds.
@@ -43,20 +46,20 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
    - The **data product name** (e.g. `Sales Data Product`). If not provided, ask.
 
 2. **Resolve the Snowflake data connection**:
-   - Call `catalog__search` with `query` set to `Snowflake` and `resourceType` set to `dataconnection`.
+   - Call `qlik_search` with `query` set to `Snowflake` and `resourceType` set to `dataconnection`.
    - Filter the results to only connections with `dataSourceId` equal to `snowflake` (native Snowflake connections, not `mlgeneric`, `rest`, or `reptgt_qdisnowflake`).
    - Present the matching Snowflake connections to the user as a numbered list showing `name` and `id`.
    - Ask the user: "Which Snowflake data connection should this app use?"
-   - Store the selected `connectionName`, `connectionId` (`resourceId` from the catalog item), and `connectionSpaceName` (the space name where the connection lives — from the catalog item's `space.name` field, or look up via `spaces__get` using the `spaceId`). The `connectionSpaceName` is needed for the `LIB CONNECT TO` statement.
+   - Store the selected `connectionName`, `connectionId` (`resourceId` from the catalog item), and `connectionSpaceName` (the space name where the connection lives — from the catalog item's `space.name` field, or look up via `qlik_search_spaces` using the `spaceId`). The `connectionSpaceName` is needed for the `LIB CONNECT TO` statement.
 
 3. **Discover the data product**:
-   - Call `catalog__search` with `query` set to the data product name and `resourceType` set to `dataproduct`.
+   - Call `qlik_search` with `query` set to the data product name and `resourceType` set to `dataproduct`.
    - If multiple results match, present them with name, ID, description, and status. Ask the user to choose one.
    - If no results: **STOP**. Suggest the user check the name or create the data product first.
    - Store `dataProductId` and `dataProductName`.
 
 4. **Get data product details**:
-   - Call `data_products__get` with the `dataProductId`.
+   - Call `qlik_get_data_product` with the `dataProductId`.
    - Extract:
      - List of linked **dataset IDs**
      - Data product `description`
@@ -65,7 +68,7 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
    - If the data product has no linked datasets: **STOP**. Report "Data product has no datasets."
 
 5. **Choose target space for the app (GATE — must ask the user)**:
-   - Call `spaces__list` to list available Qlik spaces.
+   - Call `qlik_search_spaces` to list available Qlik spaces.
    - Present them to the user as a numbered list showing `name`, `type`, and `id`.
    - Ask: "Which space should the app be created in?"
    - **Do NOT proceed until the user answers.** This is a GATE.
@@ -77,9 +80,9 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
 
 For **each dataset ID** from Step 0:
 
-1. Call `datasets__get_schema` with the `datasetId`.
+1. Call `qlik_get_dataset_schema` with the `datasetId`.
    - Extract: `tableName`, and for each column: `name`, `dataType`, `description`, `nullable`.
-2. Call `datasets__get` with the `datasetId`.
+2. Call `qlik_get_dataset` with the `datasetId`.
    - Extract: `name` (dataset display name), `description`, `technicalName` (the Snowflake `DB.SCHEMA.TABLE` path if available).
 
 Collect into a list: `datasets[] = {datasetId, displayName, description, tableName, schemaName, databaseName, columns[]}`.
@@ -88,7 +91,7 @@ Parse the Snowflake table reference from each dataset. If the dataset metadata i
 
 **Derive relationships from the data product documentation:**
 
-The data product's README (from `data_products__get` in Step 0) contains a **Relationships** table with exact FK→PK mappings. Parse that table to build the relationship map. The table format is:
+The data product's README (from `qlik_get_data_product` in Step 0) contains a **Relationships** table with exact FK→PK mappings. Parse that table to build the relationship map. The table format is:
 
 ```
 | From Table | FK Column | → | To Table | PK Column |
@@ -111,9 +114,9 @@ Build: `relationships[] = {fromTable, fkColumn, toTable, pkColumn}`.
 Store: `relationships[]` and a derived `keyRenameMap` — a dictionary mapping `{tableName, originalColumn}` → `renamedColumn` for use in the load script (see Step 2).
 
 **Discover the glossary early** (needed for load script comments in Step 2):
-- Call `catalog__search` with `query` set to "Glossary - <dataProductName>" and `resourceType` set to `glossary`.
+- Call `qlik_search` with `query` set to "Glossary - <dataProductName>" and `resourceType` set to `glossary`.
 - Also try with just `<dataProductName>` as query if the first search returns nothing.
-- If a glossary is found, call `glossaries__export` with the `glossaryId` to get all terms with descriptions.
+- If a glossary is found, call `qlik_get_full_glossary_export` with the `glossaryId` to get all terms with descriptions.
 - Store `glossaryId`, `glossaryName`, and `glossaryTerms[]` (list of `{name, description}`).
 - If no glossary is found, store `glossaryId = null`.
 
@@ -231,7 +234,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 ### Step 3: Reload the app
 
-1. Call `apps__reload` with the `appId`.
+1. Call `reload_qlik_app` with the `appId`.
    - This triggers a full data reload from Snowflake into the Qlik app.
    - If the reload fails: Report the error with details. The app still exists with the script set.
      Common causes: expired Snowflake connection credentials, table permissions, connection name mismatch.
@@ -259,7 +262,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
      - Key columns (`*_ID`, `*_KEY`) → skip (not useful as master items).
 
 3. **Create master dimensions**:
-   For each dimension candidate, call `dimensions__create` with:
+   For each dimension candidate, call `qlik_create_dimension` with:
    - `appId`: the app ID
    - `title`: the glossary term name (or column name formatted as Title Case)
    - `field`: the Qlik field name (matching the column name in the load script)
@@ -268,7 +271,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
    Log each result. Failures are non-fatal.
 
 4. **Create master measures**:
-   For each measure candidate, call `measures__create` with:
+   For each measure candidate, call `qlik_create_measure` with:
    - `appId`: the app ID
    - `title`: the glossary term name (or column name formatted as Title Case)
    - `expression`: the aggregation expression (e.g. `Sum([REVENUE])`, `Count([ORDER_ID])`)
@@ -285,7 +288,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 ### Step 5: Create default analytics sheet
 
-1. Call `sheets__create` with:
+1. Call `qlik_create_sheet` with:
    - `appId`: the app ID
    - `title`: "<dataProductName> Overview"
    - `description`: "Auto-generated overview sheet from data product: <dataProductName>"
@@ -293,28 +296,28 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 3. **Add charts** using the master items from Step 4. Build a sensible default layout:
 
-   a. **KPI tiles** (top row): For each master measure (up to 4), call `charts__add` with:
+   a. **KPI tiles** (top row): For each master measure (up to 4), call `qlik_add_chart` with:
       - `appId`, `sheetId`
       - `chartType`: `kpi`
       - `title`: the measure title
       - `measures`: `[{libraryId: <measureLibraryId>}]`
       - `row`: 0, `col`: (index * 3), `colspan`: 3, `rowspan`: 3
 
-   b. **Bar chart** (middle left): If there is at least one dimension and one measure, call `charts__add` with:
+   b. **Bar chart** (middle left): If there is at least one dimension and one measure, call `qlik_add_chart` with:
       - `chartType`: `barchart`
       - `title`: "<dimension> by <measure>"
       - `dimensions`: `[{libraryId: <firstDimensionLibraryId>}]`
       - `measures`: `[{libraryId: <firstMeasureLibraryId>}]`
       - `row`: 3, `col`: 0, `colspan`: 6, `rowspan`: 6
 
-   c. **Line chart** (middle right): If there is a date/time dimension and a measure, call `charts__add` with:
+   c. **Line chart** (middle right): If there is a date/time dimension and a measure, call `qlik_add_chart` with:
       - `chartType`: `linechart`
       - `title`: "<measure> over time"
       - `dimensions`: `[{libraryId: <dateDimensionLibraryId>}]`
       - `measures`: `[{libraryId: <firstMeasureLibraryId>}]`
       - `row`: 3, `col`: 6, `colspan`: 6, `rowspan`: 6
 
-   d. **Table** (bottom): Call `charts__add` with:
+   d. **Table** (bottom): Call `qlik_add_chart` with:
       - `chartType`: `table`
       - `title`: "Detail View"
       - `dimensions`: all dimension libraryIds (up to 5)
@@ -331,10 +334,10 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 If a glossary was found in Step 1 (`glossaryId` is not null):
 
-1. Call `catalog__search` with `query` set to the app name ("<dataProductName> Analytics") and `resourceType` set to `app`.
+1. Call `qlik_search` with `query` set to the app name ("<dataProductName> Analytics") and `resourceType` set to `app`.
    - Find the catalog `itemId` for the newly created app.
 
-2. Call `catalog__update` with:
+2. Call `qlik_update_data_product` with:
    - `itemId`: the app's catalog item ID
    - `description`: append to the existing description: "\n\nLinked glossary: <glossaryName> (ID: <glossaryId>). Business definitions for fields and measures are sourced from this glossary."
 
