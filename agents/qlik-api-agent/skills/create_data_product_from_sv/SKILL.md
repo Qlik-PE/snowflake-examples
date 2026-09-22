@@ -74,6 +74,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 1. Call `glossaries__create` with:
    - `name`: "Glossary - <semantic_view_short_name>"
    - `description`: "Business glossary from Snowflake Semantic View <full_name>"
+   - `spaceId`: the `spaceId` from Step 0 — **must match the data product space**
 2. Capture `glossaryId`. Add `{type: "glossary", id: <id>}` to `created_artifacts`.
 3. Create a term for the **semantic view itself** using its top-level `comment=`.
 4. For each fact, dimension, and metric that has a `comment=`, call `glossaries__create_term` with:
@@ -83,7 +84,7 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 
 **GATE 3**: Glossary created with ID. Term creation failures are non-fatal (log and continue).
 
-### Step 4: Create Data Product and link assets
+### Step 4: Create Data Product
 
 1. Call `data_products__create` with:
    - `name`: "<semantic_view_short_name> Data Product"
@@ -92,13 +93,16 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 2. Capture `dataProductId`. Add `{type: "data_product", id: <id>}` to `created_artifacts`.
    - If creation fails: **STOP**. Datasets and glossary remain as standalone assets.
 
+**IMPORTANT: Do NOT activate the data product. Leave it in draft.**
+
 **GATE 4**: Data product created (in draft).
 
-### Step 5: Update Data Product Documentation
+### Step 5: Set documentation, link glossary
 
-Write comprehensive documentation into the data product description that captures the full semantic view knowledge. This makes the data product self-documenting — anyone browsing it in Qlik Cloud can understand the data model without needing access to the Snowflake semantic view.
+**This step is MANDATORY — do not skip it.**
 
-1. Build a rich Markdown documentation string from the semantic view DDL parsed in Step 1. Include ALL of the following sections:
+1. Build the full README Markdown string from the semantic view DDL parsed in Step 1.
+   Include ALL of the following sections:
 
    ```
    ## <Data Product Name>
@@ -118,56 +122,69 @@ Write comprehensive documentation into the data product description that capture
 
    ### Relationships
 
-   | Relationship | From | To | Join Key |
-   |-------------|------|-----|----------|
-   | ORDERS → CUSTOMERS | ORDERS.CUSTOMERID | CUSTOMERS.CUSTOMERID | CUSTOMERID |
-   | ORDER_DETAILS → ORDERS | ORDER_DETAILS.ORDERID | ORDERS.ORDERID | ORDERID |
-   | ... | ... | ... | ... |
+   **MANDATORY FORMAT — use this exact Markdown table. Do NOT use bullet points or prose.**
+
+   Parse each line from the DDL `relationships (...)` block.
+   DDL format: `TABLE_A(FK_COL) references TABLE_B(PK_COL)`
+   Output format: one table row per line.
+
+   | From Table | FK Column | → | To Table | PK Column |
+   |-----------|-----------|---|----------|-----------|
+   | CUSTOMER | C_NATIONKEY | → | NATION | N_NATIONKEY |
+   | ORDERS | O_CUSTKEY | → | CUSTOMER | C_CUSTKEY |
+   | LINEITEM | L_ORDERKEY | → | ORDERS | O_ORDERKEY |
+   | NATION | N_REGIONKEY | → | REGION | R_REGIONKEY |
+   | PARTSUPP | PS_PARTKEY | → | PART | P_PARTKEY |
+   | PARTSUPP | PS_SUPPKEY | → | SUPPLIER | S_SUPPKEY |
+   | SUPPLIER | S_NATIONKEY | → | NATION | N_NATIONKEY |
+
+   ^^^ Example for TPCH — replace with actual DDL relationships.
+   Include ALL relationships. One row per FK→PK. No prose summaries.
 
    ### Metrics
 
    | Metric | Expression | Description |
    |--------|-----------|-------------|
-   | TOTAL_REVENUE | SUM(UNITPRICE * QUANTITY * (1 - DISCOUNT)) | Total revenue after discount |
-   | ORDER_COUNT | COUNT(DISTINCT ORDERID) | Number of distinct orders |
+   | TOTAL_REVENUE | SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT)) | Total revenue after discount |
+   | ORDER_COUNT | COUNT(O_ORDERKEY) | Number of distinct orders |
    | ... | ... | ... |
 
    ### Facts
 
    | Fact | Table | Description |
    |------|-------|-------------|
-   | FREIGHT | ORDERS | Freight/shipping charge |
-   | QUANTITY | ORDER_DETAILS | Quantity ordered |
+   | L_EXTENDEDPRICE | LINEITEM | Extended price before discounts |
+   | O_TOTALPRICE | ORDERS | Total price of the order |
    | ... | ... | ... |
 
    ### Key Dimensions
 
    | Dimension | Table | Description |
    |-----------|-------|-------------|
-   | CATEGORYNAME | CATEGORIES | Category name |
-   | COMPANYNAME | CUSTOMERS | Customer company |
+   | C_MKTSEGMENT | CUSTOMER | Market segment |
+   | R_NAME | REGION | Region name |
    | ... | ... | ... |
    ```
 
    Populate every section from the parsed DDL:
    - **Tables**: from the `tables (...)` section — include table name, primary key, comment, and column count.
-   - **Relationships**: from the `relationships (...)` section — list every FK→PK link with the join key.
-   - **Metrics**: from the `metrics (...)` section — include the expression and comment for each.
+   - **Relationships**: from the `relationships (...)` section — one row per FK→PK mapping using the **exact column names** from the DDL (e.g. `ORDERS(O_CUSTKEY) references CUSTOMER(C_CUSTKEY)` becomes `ORDERS | O_CUSTKEY | → | CUSTOMER | C_CUSTKEY`). Include every relationship. Do NOT summarize in prose.
+   - **Metrics**: from the `metrics (...)` section — include the **exact expression** and comment for each.
    - **Facts**: from the `facts (...)` section — include fact name, owning table, and comment.
-   - **Key Dimensions**: from the `dimensions (...)` section — include a representative set (skip key columns like `*_ID` that are already in the relationships table; focus on descriptive dimensions).
+   - **Key Dimensions**: from the `dimensions (...)` section — include a representative set (skip key columns like `*_KEY` that are already in the relationships table; focus on descriptive dimensions).
 
-2. Call `link_glossary_to_data_product` with:
+2. Call `data_products__update` with:
+   - `dataProductId`: the data product ID from Step 4
+   - `readme`: the full Markdown documentation string built above
+   - `glossaryId`: the glossary ID from Step 3 (this links the glossary)
+
+3. Call `link_glossary_to_data_product` with:
    - `DATA_PRODUCT_ID`: the data product ID
    - `GLOSSARY_ID`: the glossary ID from Step 3
-   This links the glossary to the data product so it appears in the Qlik Cloud UI.
 
-3. Call `data_products__update` with:
-   - `dataProductId`: the data product ID
-   - `readme`: the full Markdown documentation string built above
+4. Report: "Data product documentation set and glossary linked."
 
-4. Report: "Data product documentation updated with data model, relationships, metrics, facts, and dimensions. Glossary linked."
-
-**GATE 5**: Data product documentation updated with semantic view knowledge.
+**GATE 5**: Data product has README documentation and glossary linked.
 
 ### Step 6: Post-execution verification
 

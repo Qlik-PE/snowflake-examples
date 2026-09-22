@@ -31,18 +31,22 @@ CREATE OR REPLACE NETWORK RULE QLIK_CLOUD_NETWORK_RULE
   VALUE_LIST = ($QLIK_TENANT);
 
 -- =============================================================================
--- 2. Secret - Qlik API Key
+-- 2. Secrets - Qlik API Key and Tenant
 -- =============================================================================
 CREATE OR REPLACE SECRET QLIK_API_KEY_SECRET
   TYPE = GENERIC_STRING
   SECRET_STRING = '<QLIK_API_KEY>';  -- Replace with your actual API key
+
+CREATE OR REPLACE SECRET QLIK_TENANT_SECRET
+  TYPE = GENERIC_STRING
+  SECRET_STRING = $QLIK_TENANT;
 
 -- =============================================================================
 -- 3. External Access Integration
 -- =============================================================================
 CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION QLIK_CLOUD_EAI
   ALLOWED_NETWORK_RULES = (QLIK_CLOUD_NETWORK_RULE)
-  ALLOWED_AUTHENTICATION_SECRETS = (QLIK_API_KEY_SECRET)
+  ALLOWED_AUTHENTICATION_SECRETS = (QLIK_API_KEY_SECRET, QLIK_TENANT_SECRET)
   ENABLED = TRUE;
 
 -- =============================================================================
@@ -61,7 +65,7 @@ RUNTIME_VERSION = '3.10'
 HANDLER = 'create_app'
 EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
 PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
 AS
 $$
 import _snowflake
@@ -69,7 +73,7 @@ import requests
 
 def create_app(session, app_name, space_id, app_description=''):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     url = f'https://{tenant}/api/v1/apps'
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     attributes = {'name': app_name}
@@ -95,7 +99,7 @@ RUNTIME_VERSION = '3.10'
 HANDLER = 'set_script'
 EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
 PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
 AS
 $$
 import _snowflake
@@ -103,7 +107,7 @@ import requests
 
 def set_script(session, app_id, script, version_message=None):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     url = f'https://{tenant}/api/v1/apps/{app_id}/scripts'
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     body = {'script': script}
@@ -176,7 +180,7 @@ CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
   RUNTIME_VERSION='3.10'
   EXTERNAL_ACCESS_INTEGRATIONS=(QLIK_CLOUD_EAI)
   PACKAGES=('snowflake-snowpark-python', 'requests')
-  SECRETS=('qlik_api_key' = QLIK_API_KEY_SECRET)
+  SECRETS=('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
   HANDLER = 'run'
 AS
 $$
@@ -277,7 +281,7 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     resp = requests.post(
         f"https://{tenant}/api/v1/catalog/"
         "catalog-integration/actions/create-hierarchy-for-connected-datasets",
@@ -307,7 +311,7 @@ RUNTIME_VERSION = '3.10'
 HANDLER = 'link_glossary'
 EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
 PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
 AS
 $$
 import _snowflake
@@ -316,7 +320,7 @@ import json
 
 def link_glossary(session, data_product_id, glossary_id):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     url = f'https://{tenant}/api/data-governance/data-products/{data_product_id}'
     headers = {
         'Authorization': f'Bearer {api_key}',
@@ -355,7 +359,7 @@ RUNTIME_VERSION = '3.10'
 HANDLER = 'reload_app'
 EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
 PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET)
+SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
 AS
 $$
 import _snowflake
@@ -364,7 +368,7 @@ import time
 
 def reload_app(session, app_id):
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = session.sql("SELECT $QLIK_TENANT").collect()[0][0]
+    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     headers = {
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'

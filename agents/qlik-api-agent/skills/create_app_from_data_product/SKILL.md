@@ -40,17 +40,15 @@ Track all artifacts created during this run in a list: `created_artifacts = []`.
      - List of linked **dataset IDs**
      - Data product `description`
      - Data product `spaceId` (the space the data product lives in)
+     - Data product `readme` (the full README documentation — contains the Relationships table needed in Step 1)
    - If the data product has no linked datasets: **STOP**. Report "Data product has no datasets."
 
-5. **Choose target space for the app**:
-   - Call `spaces__list` to list all available Qlik spaces.
-   - Present the spaces to the user as a numbered list showing `name`, `type` (shared/managed/data), and `id`.
-   - Identify the data product's space from Step 4 and mark it as `(data product space)` in the list.
-   - Ask the user: "Where should the app be created? Choose a space, or select the data product's space (`<spaceName>`)."
-   - If the user says "same space" or doesn't specify, use the data product's `spaceId`.
+5. **Choose target space for the app (GATE — must ask the user)**:
+   - Call `spaces__list` to list available Qlik spaces.
+   - Present them to the user as a numbered list showing `name`, `type`, and `id`.
+   - Ask: "Which space should the app be created in?"
+   - **Do NOT proceed until the user answers.** This is a GATE.
    - Store `appSpaceId` and `appSpaceName`.
-
-6. Store final values: `dataProductId`, `dataProductName`, `connectionId`, `connectionName`, `connectionSpaceName`, `appSpaceId`, `appSpaceName`, `datasetIds[]`.
 
 **GATE 0**: Data product found with at least one dataset. Connection resolved (by user selection). Target space explicitly chosen by user.
 
@@ -67,19 +65,27 @@ Collect into a list: `datasets[] = {datasetId, displayName, description, tableNa
 
 Parse the Snowflake table reference from each dataset. If the dataset metadata includes `secureQri` or `technicalDescription`, extract the database, schema, and table name. Otherwise, infer from `tableName`.
 
-**Derive relationships between tables:**
+**Derive relationships from the data product documentation:**
 
-Analyze all datasets to identify key columns and build a relationship map. Key columns are columns whose name ends in `_KEY`, `_ID`, `_CODE`, or `_SK`, or whose description mentions "primary key", "foreign key", "references", or "links to".
+The data product's README (from `data_products__get` in Step 0) contains a **Relationships** table with exact FK→PK mappings. Parse that table to build the relationship map. The table format is:
 
-For each key column found across all datasets:
-1. **Identify the primary table**: The table where the column is a primary key (unique identifier). This is typically the table named after the entity (e.g. `N_NATIONKEY` is the PK in the `NATION` table, `C_CUSTKEY` is the PK in `CUSTOMER`).
-2. **Identify foreign key references**: Other tables that contain the same key column name. These are FK references (e.g. `SUPPLIER` has `S_NATIONKEY` which references `N_NATIONKEY` in `NATION`).
-3. **Build a relationship map**: `relationships[] = {keyName, primaryTable, primaryColumn, foreignTable, foreignColumn}`.
+```
+| From Table | FK Column | → | To Table | PK Column |
+|-----------|-----------|---|----------|-----------|
+| CUSTOMER | C_NATIONKEY | → | NATION | N_NATIONKEY |
+| ORDERS | O_CUSTKEY | → | CUSTOMER | C_CUSTKEY |
+| ... | ... | → | ... | ... |
+```
 
-Matching rules for key columns across tables:
-- **Exact match**: Same column name in multiple tables (e.g. `L_ORDERKEY` in LINEITEM → `O_ORDERKEY` in ORDERS). Strip the table-specific prefix (single letter + `_`) to find the base key name.
-- **Prefix pattern**: Columns like `<PREFIX>_<KEYNAME>` where `<KEYNAME>` matches across tables. For example, `N_NATIONKEY`, `S_NATIONKEY`, `C_NATIONKEY` all share the base key `NATIONKEY` — the `NATION` table owns it (prefix `N_`), others reference it.
-- **Description-based**: If a column's description says "references <TABLE>" or "foreign key to <TABLE>", use that.
+For each row, extract: `{fromTable, fkColumn, toTable, pkColumn}`.
+
+If the README does not contain a Relationships table or is empty, fall back to deriving relationships from column names:
+- Key columns end in `_KEY`, `_ID`, `_CODE`, or `_SK`.
+- Strip the table-specific prefix (single letter + `_`) to find the base key name.
+- The table named after the entity owns the PK (e.g. `N_NATIONKEY` is PK in `NATION`).
+- Other tables with the same base key have FK references.
+
+Build: `relationships[] = {fromTable, fkColumn, toTable, pkColumn}`.
 
 Store: `relationships[]` and a derived `keyRenameMap` — a dictionary mapping `{tableName, originalColumn}` → `renamedColumn` for use in the load script (see Step 2).
 
@@ -151,12 +157,18 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
    ```
    // Data Product: <dataProductName>
    // Generated from Qlik Data Product by Snowflake Cortex Agent
-   // Connection: <spaceName>:<connectionName>
+   // Connection: <connectionSpaceName>:<connectionName>
 
-   LIB CONNECT TO '<spaceName>:<connectionName>';
+   LIB CONNECT TO '<connectionSpaceName>:<connectionName>';
    ```
 
-   The LIB CONNECT format is `<spaceName>:<connectionName>` where `<spaceName>` is the name of the Qlik space that owns the data connection, and `<connectionName>` is the connection name selected by the user in Step 0. To find the space name for the connection, use the `spaceId` from the connection's catalog item (returned in Step 0) and look it up in the spaces list, or use the space name from the catalog result directly.
+   **CRITICAL — LIB CONNECT rules:**
+   - The format MUST be `LIB CONNECT TO '<spaceName>:<connectionName>';` — this is a fully qualified connection reference.
+   - `<spaceName>` is the `connectionSpaceName` captured in Step 0 (the Qlik space name where the data connection lives).
+   - `<connectionName>` is the connection name selected by the user in Step 0.
+   - Do NOT use bare connection names without the space prefix — they will fail if the app is in a different space.
+   - Do NOT use `lib://DataFiles/`, QRI paths, or any other format. Only `LIB CONNECT TO '<space>:<connection>';`.
+   - Example: `LIB CONNECT TO 'Snowflake:Snowflake_AYFRZOA-QLIK.snowflakecomputing.com';`
 
 3. Concatenate all blocks into a single `fullScript` string separated by blank lines.
 
