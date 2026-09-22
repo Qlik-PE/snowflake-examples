@@ -5,7 +5,23 @@ description: Creates a Qlik Data Product from a Snowflake Semantic View. Registe
 
 ## Workflow: Create Qlik Data Product from Snowflake Semantic View
 
-**MCP Server**: This skill uses the Qlik MCP server attached to this agent. All tool names below (e.g. `catalog__search`, `spaces__list`) refer to tools provided by that server. Tools `get_semantic_view_ddl`, `get_table_columns`, and `create_qlik_dataset` are stored-procedure tools registered directly on this agent.
+**MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `get_semantic_view_ddl`, `get_table_columns`, and `create_qlik_dataset` are stored-procedure tools registered directly on this agent — call them by their exact names.
+
+**MCP Tool Name Resolution (MANDATORY before calling any MCP tool):**
+The External MCP Server mangles tool names by prepending a truncated server identifier. The short names used in this skill (e.g. `catalog__search`, `spaces__list`, `data_products__create`) will NOT match the actual registered tool names.
+
+Before your first MCP tool call, list all available tools and build a mapping from the short names in this skill to the actual mangled names. For example:
+- `catalog__search` → the tool whose name ends in `_qlik_search` or `_qlikclou_qlik_search`
+- `spaces__list` → the tool whose name ends in `_qlik_list_spaces`
+- `glossaries__create` → the tool whose name ends in `_qlik_create_glossary`
+- `glossaries__create_term` → the tool whose name ends in `_qlik_create_glossary_term`
+- `data_products__create` → the tool whose name ends in `_qlik_create_data_product`
+- `data_products__get` → the tool whose name ends in `_qlik_get_data_product`
+- `data_products__update` → the tool whose name ends in `_qlik_update_data_product`
+- `datasets__get` → the tool whose name ends in `_qlik_get_dataset`
+- `catalog__delete` → the tool whose name ends in `_qlik_delete`
+
+Match by the **suffix** — the part after the server prefix. Use the actual mangled names in all subsequent tool calls. If a tool call returns "not found", check the available tools list again for the correct mangled name.
 
 Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to the next step if the current step fails -- follow the rollback instructions instead.
 

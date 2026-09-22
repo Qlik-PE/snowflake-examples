@@ -72,15 +72,18 @@ import _snowflake
 import requests
 
 def create_app(session, app_name, space_id, app_description=''):
+    if not space_id or space_id.strip() == '':
+        return {'status_code': 400, 'response': 'SPACE_ID is required. Without it the app is created in personal space.'}
+    space_id = space_id.strip()
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
     tenant = _snowflake.get_generic_secret_string('qlik_tenant')
-    url = f'https://{tenant}/api/v1/apps'
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    attributes = {'name': app_name}
+
+    attributes = {'name': app_name, 'spaceId': space_id}
     if app_description:
         attributes['description'] = app_description
-    body = {'attributes': attributes, 'spaceId': space_id}
-    resp = requests.post(url, headers=headers, json=body)
+    body = {'attributes': attributes}
+    resp = requests.post(f'https://{tenant}/api/v1/apps', headers=headers, json=body)
     try:
         return {'status_code': resp.status_code, 'response': resp.json()}
     except:
