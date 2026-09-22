@@ -31,6 +31,7 @@ Cortex Agent (QLIK_API_AGENT)
 | `reload_qlik_app` | `RELOAD_QLIK_APP` | `POST /api/v1/reloads` (triggers reload, polls for completion up to 5 min) |
 | `link_glossary_to_data_product` | `LINK_GLOSSARY_TO_DATA_PRODUCT` | `PATCH /api/data-governance/data-products/{id}` (JSON Patch: add glossaryIds) |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL()` |
+| `get_table_columns` | `GET_TABLE_COLUMNS` | Snowflake `INFORMATION_SCHEMA.COLUMNS` |
 
 ### CoCo MCP tools (Qlik MCP server)
 
@@ -139,7 +140,7 @@ Returns HTTP 201 with an array of created dataset IDs on success.
    ```sql
    SELECT TRY_PARSE_JSON(
      SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
-       'TORRA.PUBLIC.QLIK_API_AGENT',
+       '<DB>.<SCHEMA>.QLIK_API_AGENT',
        $${ "messages": [{ "role": "user", "content": [{ "type": "text",
            "text": "Create a Qlik app called 'My Test App'" }] }] }$$,
        TRUE

@@ -196,11 +196,11 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
 2. Call `qlik_update_data_product` with:
    - `dataProductId`: the data product ID from Step 4
    - `readme`: the full Markdown documentation string built above
-   - `glossaryId`: the glossary ID from Step 3 (this links the glossary)
 
 3. Call `link_glossary_to_data_product` with:
    - `DATA_PRODUCT_ID`: the data product ID
    - `GLOSSARY_ID`: the glossary ID from Step 3
+   (This stored procedure uses the PATCH API to link the glossary.)
 
 4. Report: "Data product documentation set and glossary linked."
 
@@ -234,6 +234,6 @@ If rollback is needed at any point:
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
 3. If user confirms, delete in **reverse** order:
    - Data product: `qlik_delete_data_product` with `dataProductId`
-   - Glossary: `qlik_delete_data_product` with the glossary item ID
-   - Datasets: `qlik_delete_data_product` for each dataset item ID
+   - Glossary: `qlik_delete_glossary_term` for each term, then delete the glossary via `qlik_search` to find its catalog item
+   - Datasets: datasets were created via stored procedure and cannot be deleted via MCP — report their IDs for manual cleanup
 4. Confirm deletion of each artifact.

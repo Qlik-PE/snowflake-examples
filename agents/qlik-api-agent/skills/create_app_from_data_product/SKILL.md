@@ -5,7 +5,7 @@ description: Creates a Qlik Sense app from an existing Qlik Data Product. Genera
 
 ## Workflow: Create Qlik Sense App from Data Product
 
-**MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `create_qlik_app`, `set_qlik_app_script`, `get_semantic_view_ddl`, `get_table_columns`, `create_qlik_dataset`, and `link_glossary_to_data_product` are stored-procedure tools registered directly on this agent — call them by their exact names.
+**MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `create_qlik_app`, `set_qlik_app_script`, `reload_qlik_app`, and `link_glossary_to_data_product` are stored-procedure tools registered directly on this agent — call them by their exact names.
 
 **MCP Tool Name Resolution (MANDATORY before calling any MCP tool):**
 The External MCP Server prepends a truncated server identifier to each tool name. The official Qlik MCP tool names (from Qlik Cloud documentation) are listed below. The actual registered names in your tool list will have a server prefix added, but end with the official name.
@@ -334,14 +334,10 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
 If a glossary was found in Step 1 (`glossaryId` is not null):
 
-1. Call `qlik_search` with `query` set to the app name ("<dataProductName> Analytics") and `resourceType` set to `app`.
-   - Find the catalog `itemId` for the newly created app.
+1. Call `qlik_create_glossary_term_links` to link glossary terms to the app's master items
+   where term names match dimension/measure names.
 
-2. Call `qlik_update_data_product` with:
-   - `itemId`: the app's catalog item ID
-   - `description`: append to the existing description: "\n\nLinked glossary: <glossaryName> (ID: <glossaryId>). Business definitions for fields and measures are sourced from this glossary."
-
-3. Report: "App linked to glossary: <glossaryName>"
+2. Report: "App linked to glossary: <glossaryName>"
 
 If no glossary exists, skip this step.
 
@@ -371,5 +367,5 @@ If rollback is needed at any point:
 1. List all entries in `created_artifacts` (in creation order).
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
 3. If user confirms, delete in **reverse** order:
-   - App: `apps__delete` with the `appId`. This removes all sheets, master items, and the load script in one operation.
+   - App: use `qlik_search` to find the app, then delete it via the Qlik API. Deleting the app removes all sheets, master items, and the load script.
 4. Confirm deletion.

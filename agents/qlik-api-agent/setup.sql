@@ -83,10 +83,10 @@ def create_app(session, app_name, space_id, app_description=''):
     if app_description:
         attributes['description'] = app_description
     body = {'attributes': attributes}
-    resp = requests.post(f'https://{tenant}/api/v1/apps', headers=headers, json=body)
+    resp = requests.post(f'https://{tenant}/api/v1/apps', headers=headers, json=body, timeout=30)
     try:
         return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
+    except Exception:
         return {'status_code': resp.status_code, 'response': resp.text}
 $$;
 
@@ -107,8 +107,11 @@ AS
 $$
 import _snowflake
 import requests
+import re
 
 def set_script(session, app_id, script, version_message=None):
+    if not re.match(r'^[0-9a-f\-]{36}$', app_id or ''):
+        return {'status_code': 400, 'response': 'Invalid APP_ID format (expected UUID)'}
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
     tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     url = f'https://{tenant}/api/v1/apps/{app_id}/scripts'
@@ -116,14 +119,14 @@ def set_script(session, app_id, script, version_message=None):
     body = {'script': script}
     if version_message:
         body['versionMessage'] = version_message
-    resp = requests.post(url, headers=headers, json=body)
+    resp = requests.post(url, headers=headers, json=body, timeout=30)
     try:
         return {'status_code': resp.status_code, 'response': resp.json()}
-    except:
+    except Exception:
         return {'status_code': resp.status_code, 'response': resp.text if resp.text else 'No response body'}
 $$;
 
--- 4d. Get Semantic View DDL
+-- 4c. Get Semantic View DDL
 CREATE OR REPLACE PROCEDURE GET_SEMANTIC_VIEW_DDL(
   SEMANTIC_VIEW_NAME VARCHAR
 )
@@ -136,7 +139,7 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
--- 4e. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+-- 4c. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
 CREATE OR REPLACE PROCEDURE GET_TABLE_COLUMNS(
   DATABASE_NAME VARCHAR,
   SCHEMA_NAME VARCHAR,
@@ -149,11 +152,23 @@ HANDLER = 'get_columns'
 PACKAGES = ('snowflake-snowpark-python')
 AS
 $$
+import re
+
+def _sanitize_identifier(name):
+    """Strip quotes and reject anything that isn't a valid Snowflake identifier."""
+    name = name.strip().strip('"')
+    if not re.match(r'^[A-Za-z_][A-Za-z0-9_$]*$', name):
+        raise ValueError(f"Invalid identifier: {name}")
+    return name
+
 def get_columns(session, database_name, schema_name, table_name):
+    db = _sanitize_identifier(database_name)
+    sch = _sanitize_identifier(schema_name)
+    tbl = _sanitize_identifier(table_name)
     query = f"""
         SELECT COLUMN_NAME, DATA_TYPE, NUMERIC_PRECISION, NUMERIC_SCALE
-        FROM {database_name}.INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'
+        FROM "{db}".INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{sch}' AND TABLE_NAME = '{tbl}'
         ORDER BY ORDINAL_POSITION
     """
     rows = session.sql(query).collect()
@@ -168,7 +183,7 @@ def get_columns(session, database_name, schema_name, table_name):
     ]
 $$;
 
--- 4b. Create Qlik Dataset (catalog-integration API)
+-- 4d. Create Qlik Dataset (catalog-integration API)
 -- Uses the internal create-hierarchy-for-connected-datasets endpoint
 -- that the Qlik UI uses. Auto-discovers table metadata from INFORMATION_SCHEMA
 -- and creates the dataset in a single call (no QRI/dataAsset discovery needed).
@@ -176,7 +191,7 @@ CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
     DB VARCHAR, SCH VARCHAR, TBL VARCHAR,
     SPACE_ID VARCHAR DEFAULT NULL,
     CONNECTION_ID VARCHAR DEFAULT NULL,
-    SF_ROLE VARCHAR DEFAULT 'QLIK_DATA_PRODUCT'
+    SF_ROLE VARCHAR DEFAULT 'QLIK_DATA_PRODUCT'  -- Snowflake role Qlik uses; create this role if it doesn't exist
 )
   RETURNS VARIANT
   LANGUAGE PYTHON
@@ -187,7 +202,13 @@ CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
   HANDLER = 'run'
 AS
 $$
-import _snowflake, requests, json
+import _snowflake, requests, json, re
+
+def _sanitize_id(name):
+    name = name.strip().strip('"')
+    if not re.match(r'^[A-Za-z_][A-Za-z0-9_$]*$', name):
+        raise ValueError(f"Invalid identifier: {name}")
+    return name
 
 # Snowflake type -> (JDBC dataType code, native type name)
 TYPE_MAP = {
@@ -225,13 +246,20 @@ TYPE_MAP = {
 }
 
 def run(session, db, sch, tbl, space_id, connection_id, sf_role):
+    if not space_id or not space_id.strip():
+        return {"error": "SPACE_ID is required"}
+    if not connection_id or not connection_id.strip():
+        return {"error": "CONNECTION_ID is required"}
+    db_s = _sanitize_id(db)
+    sch_s = _sanitize_id(sch)
+    tbl_s = _sanitize_id(tbl)
     rows = session.sql(f"""
         SELECT COLUMN_NAME, ORDINAL_POSITION, DATA_TYPE, IS_NULLABLE,
                COALESCE(NUMERIC_PRECISION, 0) AS PREC,
                COALESCE(NUMERIC_SCALE, 0) AS SCALE,
                COALESCE(CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, 38) AS SIZE
-        FROM {db}.INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = '{sch}' AND TABLE_NAME = '{tbl}'
+        FROM "{db_s}".INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = '{sch_s}' AND TABLE_NAME = '{tbl_s}'
         ORDER BY ORDINAL_POSITION
     """).collect()
 
@@ -252,7 +280,7 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
             "name": col, "fullName": col, "nativeType": native,
             "nativeFieldInfo": {
                 "dataType": jdbc_code, "name": col, "nullable": nullable,
-                "ordinalPostion": int(r['ORDINAL_POSITION']),
+                "ordinalPostion": int(r['ORDINAL_POSITION']),  # Qlik API uses this spelling
                 "scale": scale, "size": size, "typeName": native
             },
             "isSelected": True
@@ -303,7 +331,7 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 $$;
 
--- 4f. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
+-- 4e. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
 CREATE OR REPLACE PROCEDURE LINK_GLOSSARY_TO_DATA_PRODUCT(
   DATA_PRODUCT_ID VARCHAR,
   GLOSSARY_ID VARCHAR
@@ -331,7 +359,7 @@ def link_glossary(session, data_product_id, glossary_id):
     }
 
     # GET current glossaryIds
-    get_resp = requests.get(url, headers=headers)
+    get_resp = requests.get(url, headers=headers, timeout=30)
     if get_resp.status_code != 200:
         return {'linked': False, 'error': f'GET failed: {get_resp.status_code}'}
 
@@ -343,7 +371,7 @@ def link_glossary(session, data_product_id, glossary_id):
 
     # PATCH with replace on /glossaryIds
     patches = [{"op": "replace", "path": "/glossaryIds", "value": existing}]
-    resp = requests.patch(url, headers=headers, data=json.dumps(patches))
+    resp = requests.patch(url, headers=headers, data=json.dumps(patches), timeout=30)
     return {
         'status_code': resp.status_code,
         'linked': resp.status_code == 204,
@@ -352,7 +380,7 @@ def link_glossary(session, data_product_id, glossary_id):
     }
 $$;
 
--- 4g. Reload Qlik App (POST /api/v1/reloads)
+-- 4f. Reload Qlik App (POST /api/v1/reloads)
 CREATE OR REPLACE PROCEDURE RELOAD_QLIK_APP(
   APP_ID VARCHAR
 )
@@ -367,9 +395,12 @@ AS
 $$
 import _snowflake
 import requests
+import re
 import time
 
 def reload_app(session, app_id):
+    if not re.match(r'^[0-9a-f\-]{36}$', app_id or ''):
+        return {'status_code': 400, 'reloaded': False, 'error': 'Invalid APP_ID format (expected UUID)'}
     api_key = _snowflake.get_generic_secret_string('qlik_api_key')
     tenant = _snowflake.get_generic_secret_string('qlik_tenant')
     headers = {
@@ -380,12 +411,12 @@ def reload_app(session, app_id):
     # Trigger reload
     url = f'https://{tenant}/api/v1/reloads'
     body = {'appId': app_id}
-    resp = requests.post(url, headers=headers, json=body)
+    resp = requests.post(url, headers=headers, json=body, timeout=30)
 
     if resp.status_code not in (200, 201):
         try:
             return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.json()}
-        except:
+        except Exception:
             return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.text}
 
     reload = resp.json()
@@ -426,6 +457,12 @@ $$;
 -- =============================================================================
 CREATE STAGE IF NOT EXISTS AGENT_SKILLS_STAGE;
 
+-- NOTE: These COPY INTO commands upload lightweight stubs only. The full skill
+-- instructions must be uploaded separately using PUT:
+--   PUT file:///.../skills/create_data_product_from_sv/SKILL.md
+--       @AGENT_SKILLS_STAGE/create_data_product_from_sv/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE
+--   PUT file:///.../skills/create_app_from_data_product/SKILL.md
+--       @AGENT_SKILLS_STAGE/create_app_from_data_product/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE
 COPY INTO @AGENT_SKILLS_STAGE/create_data_product_from_sv/SKILL.md
   FROM (SELECT $$---
 name: create_data_product_from_sv
@@ -451,6 +488,9 @@ $$)
 -- =============================================================================
 -- 6. Create the Agent
 -- =============================================================================
+-- NOTE: The agent spec is a $$ literal string — session variables like
+-- $WAREHOUSE and $QLIK_MCP_SERVER cannot be interpolated inside it.
+-- Replace <WAREHOUSE> and <QLIK_MCP_SERVER> below with your actual values.
 CREATE OR REPLACE AGENT QLIK_API_AGENT
   COMMENT = 'Cortex Agent that integrates Snowflake with Qlik Cloud. Creates data products from semantic views, builds Qlik Sense apps with load scripts, glossaries, master items, and analytics sheets.'
   FROM SPECIFICATION $$
@@ -618,43 +658,43 @@ tool_resources:
     identifier: RELOAD_QLIK_APP
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   link_glossary_to_data_product:
     type: procedure
     identifier: LINK_GLOSSARY_TO_DATA_PRODUCT
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   create_qlik_app:
     type: procedure
     identifier: CREATE_QLIK_APP
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   set_qlik_app_script:
     type: procedure
     identifier: SET_QLIK_APP_SCRIPT
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   get_semantic_view_ddl:
     type: procedure
     identifier: GET_SEMANTIC_VIEW_DDL
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   create_qlik_dataset:
     type: procedure
     identifier: CREATE_QLIK_DATASET
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   get_table_columns:
     type: procedure
     identifier: GET_TABLE_COLUMNS
     execution_environment:
       type: warehouse
-      warehouse: COMPUTE
+      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
 skills:
   - name: create_data_product_from_sv
     source:
@@ -666,7 +706,7 @@ skills:
       path: "@AGENT_SKILLS_STAGE/create_app_from_data_product"
 mcp_servers:
   - server_spec:
-      name: "QLIK_MCP_DB.PUBLIC.QLIK_MCP_SERVER"
+      name: "<QLIK_MCP_SERVER>"  # Replace with $QLIK_MCP_SERVER value
 $$;
 
 -- =============================================================================
@@ -683,8 +723,8 @@ $$;
 --   CREATE SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
 --
 -- Add the agent:
-ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
-  ADD AGENT QLIK_API_AGENT;
+-- ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
+--   ADD AGENT QLIK_API_AGENT;
 
 -- Grant USAGE so users can see and use the agent in CoWork:
 -- GRANT USAGE ON AGENT QLIK_API_AGENT TO ROLE <user_role>;
