@@ -452,7 +452,7 @@ CREATE OR REPLACE AGENT QLIK_API_AGENT
   COMMENT = 'Cortex Agent that integrates Snowflake with Qlik Cloud. Creates data products from semantic views, builds Qlik Sense apps with load scripts, glossaries, master items, and analytics sheets.'
   FROM SPECIFICATION $$
 models:
-  orchestration: claude-sonnet
+  orchestration: auto
 instructions:
   response: |
     You are an agent that integrates Snowflake with the Qlik Cloud REST API.
