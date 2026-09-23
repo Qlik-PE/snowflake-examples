@@ -49,7 +49,7 @@ See the [mcp README](mcp/README.md) for OAuth setup, troubleshooting, and agent 
 
 - **[cortex-ai-functions.sql](sql/cortex-ai-functions.sql)** — Demonstrates Snowflake Cortex AI functions (COMPLETE, SUMMARIZE, SENTIMENT, TRANSLATE, EXTRACT_ANSWER) using a sample product reviews dataset.
 - **[cortex-search-rag.sql](sql/cortex-search-rag.sql)** — End-to-end Cortex Search + RAG pipeline: creates a knowledge base, builds a hybrid search service, and wires it to a Cortex Agent for retrieval-augmented generation.
-- **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Inspects token and credit consumption by Cortex Agents, broken down by agent and LLM model.
+- **[cortex-agent-token-usage.sql](sql/cortex-agent-token-usage.sql)** — Cortex Agent cost and token analysis over `CORTEX_AGENT_USAGE_HISTORY`. Breaks consumption down by agent, service layer (`cortex_agents` vs `cortex_analyst`) and LLM model, with the input/output/cache token split and a cache-read percentage to spot agents that are missing prompt caching. Also reports total cost of ownership per agent — inference plus the warehouse credits burned by agent-generated SQL, which `TOKEN_CREDITS` alone omits — and includes a reconciliation query that proves the JSON flattening is lossless.
 
 ### Native Apps (`native-apps/`)
 
