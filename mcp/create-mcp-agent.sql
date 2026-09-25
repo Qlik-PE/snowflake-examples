@@ -200,7 +200,10 @@ SET AGENT_MCP_REF = CURRENT_DATABASE() || '.' || CURRENT_SCHEMA() || '.' || $MCP
 SET AGENT_FQN = CURRENT_DATABASE() || '.' || CURRENT_SCHEMA() || '.' || $AGENT_NAME;
 SET AGENT_DISPLAY_NAME = 'Qlik MCP ' || $TENANT;
 
--- Build the YAML specification
+-- Build the YAML specification as a single-quoted string ('\n' = newline) so
+-- that the MCP server FQN can be concatenated in. The CREATE statement then
+-- wraps it in dollar quotes. That is safe only because it happens here, OUTSIDE
+-- any EXECUTE IMMEDIATE block; dollar-quoted strings cannot be nested.
 SET AGENT_SPEC = 'models:\n'
     || '  orchestration: auto\n'
     || 'instructions:\n'

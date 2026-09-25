@@ -165,6 +165,10 @@ async def run(query_sql: str, warehouse: str) -> None:
         # --- Turn 2: Rewrite and produce structured output ---
         print("=== Turn 2: Rewriting and optimizing ===\n")
 
+        # Turn 2 needs structured output, but options are fixed when the client is
+        # created and the SDK has no public setter, so this swaps the private
+        # _options attribute. If the running session ignores it, the result has no
+        # structured_output and the script prints "No structured output returned."
         client._options = CortexCodeAgentOptions(
             cwd=".",
             allowed_tools=["SQL"],

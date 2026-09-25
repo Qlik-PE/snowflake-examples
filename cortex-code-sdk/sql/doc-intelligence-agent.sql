@@ -163,6 +163,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 3: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 -- Replace @my_stage/sample.pdf with an actual file on one of your stages.
 
 -- Option A: SQL via DATA_AGENT_RUN

@@ -68,6 +68,10 @@ DECLARE
     v_warehouse VARCHAR;
     v_spec VARCHAR;
     v_sql VARCHAR;
+    -- The spec must be dollar-quoted, but a literal double-dollar anywhere in
+    -- this block (even in a comment) would end the block early, so the
+    -- delimiter is assembled at runtime.
+    v_dq VARCHAR DEFAULT '$' || '$';
 BEGIN
     SELECT GETVARIABLE('AGENT_NAME') INTO v_agent_name;
     SELECT GETVARIABLE('AGENT_DISPLAY_NAME') INTO v_display_name;
@@ -153,7 +157,7 @@ BEGIN
 
     v_sql := 'CREATE OR REPLACE AGENT ' || v_agent_name
         || ' PROFILE = ''{"display_name": "' || v_display_name || '"}'''
-        || ' FROM SPECIFICATION $$ ' || v_spec || ' $$';
+        || ' FROM SPECIFICATION ' || v_dq || v_spec || v_dq;
     EXECUTE IMMEDIATE v_sql;
 END;
 $$;
@@ -194,7 +198,8 @@ SELECT TRY_PARSE_JSON(
   )
 ):status::VARCHAR AS test_status;
 
--- 4b. Test fallback (use a question that references fields outside the Qlik app)
+-- 4b. Test the fallback: ask about a field that is NOT in the Qlik app, so
+--     the agent should answer from the Semantic View (edit the question to fit)
 -- SELECT TRY_PARSE_JSON(
 --   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
 --     $TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.' || $AGENT_NAME,
@@ -206,4 +211,4 @@ SELECT TRY_PARSE_JSON(
 -- =============================================================================
 -- Cleanup (run manually when done)
 -- =============================================================================
--- DROP AGENT MCP_FIRST_AGENT;
+-- DROP AGENT MCP_FIRST_AGENT;   -- default AGENT_NAME; adjust if you changed it

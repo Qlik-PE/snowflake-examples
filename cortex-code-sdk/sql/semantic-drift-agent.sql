@@ -2,7 +2,7 @@
 -- Semantic View Drift Checker Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/semantic_drift_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/semantic_drift_agent.py.
 --
 -- Compares a Qlik Data Product definition against a Snowflake semantic view.
 -- Detects column drift, type mismatches, and broken verified queries, then
@@ -79,6 +79,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

@@ -4,6 +4,10 @@ TPCH SF100 Cost-Optimize-Cost Workflow
 End-to-end demonstration that chains the Workload Cost Attribution and SQL
 Optimizer agents against SNOWFLAKE_SAMPLE_DATA.TPCH_SF100 (600 million rows).
 
+Warning: this runs heavy queries on TPCH_SF100 and consumes warehouse credits.
+The cost agent reads the real-time INFORMATION_SCHEMA.QUERY_HISTORY table
+function, because ACCOUNT_USAGE.QUERY_HISTORY lags by up to ~45 minutes.
+
 Workflow:
   1. Execute a deliberately complex, anti-pattern-heavy query.
   2. Call the Workload Cost agent to attribute the cost of that execution.
@@ -19,6 +23,7 @@ Usage:
 import argparse
 import asyncio
 import json
+import re
 import textwrap
 
 from pydantic import BaseModel
@@ -161,15 +166,25 @@ class OptimizationReport(BaseModel):
     warnings: list[Warning]
     estimated_improvement: str
 
+class ExecutionResult(BaseModel):
+    query_id: str
+    row_count: int
+
+# Snowflake query IDs are UUID-shaped (8-4-4-4-12 hex digits).
+QUERY_ID_RE = re.compile(
+    r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}', re.IGNORECASE
+)
+
 # ---------------------------------------------------------------------------
 # Prompts
 # ---------------------------------------------------------------------------
 
 COST_SYSTEM_PROMPT = """\
 You are a Snowflake FinOps analyst. Analyze credit consumption for specific
-query executions and produce structured cost breakdowns. Use
-SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY for execution metrics. Base every
-number on actual data — never estimate without a query.
+query executions and produce structured cost breakdowns. Use the real-time
+INFORMATION_SCHEMA.QUERY_HISTORY table function for recent queries (ACCOUNT_USAGE
+lags by up to ~45 minutes). Base every number on actual data — never estimate
+without a query.
 """
 
 OPTIMIZER_SYSTEM_PROMPT = """\
@@ -201,7 +216,10 @@ Analyze the cost of these specific query executions on warehouse '{warehouse}'.
 Query IDs: {ids_str}
 
 Steps:
-1. Query SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY for these query_ids. Get
+1. These queries ran moments ago, and SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+   lags by up to ~45 minutes. Look them up with the real-time table function
+   TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(RESULT_LIMIT => 10000)) filtered on
+   QUERY_ID (run it with any current database set). Get
    EXECUTION_TIME, COMPILATION_TIME, BYTES_SCANNED, ROWS_PRODUCED,
    CREDITS_USED_CLOUD_SERVICES, PARTITIONS_SCANNED, PARTITIONS_TOTAL,
    BYTES_SPILLED_TO_LOCAL_STORAGE, BYTES_SPILLED_TO_REMOTE_STORAGE.
@@ -286,6 +304,10 @@ what changed, and Snowflake-specific impact. Return the structured JSON.
 
         # Turn 2 — rewrite with structured output
         print("--- Turn 2: Rewriting and optimizing ---\n")
+        # Turn 2 needs structured output, but options are fixed when the client is
+        # created and the SDK has no public setter, so this swaps the private
+        # _options attribute. If the running session ignores it, the result has no
+        # structured_output and the script prints "No structured output returned."
         client._options = CortexCodeAgentOptions(
             cwd=".",
             allowed_tools=["SQL"],
@@ -311,7 +333,11 @@ what changed, and Snowflake-specific impact. Return the structured JSON.
 
 
 async def execute_query(sql: str, warehouse: str, label: str) -> str | None:
-    """Run a SQL query via the SDK and return the query_id."""
+    """Run a SQL query via the SDK and return its query_id.
+
+    The agent returns the ID as structured output (ExecutionResult). If that is
+    missing, fall back to the last UUID-shaped string in the agent's text.
+    """
     prompt = f"""\
 Execute the following SQL query on warehouse {warehouse}. Use LIMIT 200 if the
 query does not already have one. After execution, return the QUERY_ID from
@@ -321,9 +347,11 @@ LAST_QUERY_ID() and the row count.
 {sql}
 ```
 
-Report the QUERY_ID and basic execution stats.
+Report the QUERY_ID and basic execution stats, then return the QUERY_ID and
+row count as the structured output.
 """
     query_id = None
+    fallback_id = None
 
     print(f"\n{'='*60}")
     print(f"  EXECUTING QUERY — {label}")
@@ -335,27 +363,25 @@ Report the QUERY_ID and basic execution stats.
             cwd=".",
             allowed_tools=["SQL"],
             system_prompt="Execute the SQL query and report the QUERY_ID and row count.",
+            output_format={"type": "json_schema", "schema": ExecutionResult.model_json_schema()},
             max_turns=5,
         ),
     ):
         if isinstance(message, AssistantMessage):
             for block in message.content:
                 if hasattr(block, "text"):
-                    text = block.text
-                    print(text, end="")
-                    # Try to capture query_id from the output
-                    if "01c" in text or "01C" in text:
-                        import re
-                        match = re.search(
-                            r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}',
-                            text, re.IGNORECASE,
-                        )
-                        if match:
-                            query_id = match.group(0)
+                    print(block.text, end="")
+                    matches = QUERY_ID_RE.findall(block.text)
+                    if matches:
+                        fallback_id = matches[-1]
         elif isinstance(message, ResultMessage):
             print(f"\n  (done — turns={message.num_turns})")
+            if message.structured_output:
+                result = ExecutionResult.model_validate(message.structured_output)
+                if QUERY_ID_RE.fullmatch(result.query_id.strip()):
+                    query_id = result.query_id.strip()
 
-    return query_id
+    return query_id or fallback_id
 
 
 # ---------------------------------------------------------------------------

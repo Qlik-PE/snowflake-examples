@@ -6,22 +6,29 @@
 -- product reviews dataset. Each section is independent and can be run
 -- separately.
 --
--- Functions covered:
---   1. COMPLETE     - Generate text responses using LLMs
---   2. SUMMARIZE    - Summarize long-form text
---   3. SENTIMENT    - Score text sentiment (-1 to 1)
---   4. TRANSLATE    - Translate text between languages
---   5. EXTRACT_ANSWER - Extract specific answers from text
+-- Functions covered (in the order the steps run):
+--   Step 2. SENTIMENT      - Score text sentiment (-1 to 1)
+--   Step 3. SUMMARIZE      - Summarize long-form text
+--   Step 4. COMPLETE       - Generate text with an LLM
+--   Step 5. TRANSLATE      - Translate text between languages
+--   Step 6. EXTRACT_ANSWER - Extract specific answers from text
+--   Step 7. All of the above combined in one pipeline
+--
+-- These are the SNOWFLAKE.CORTEX.* functions. Newer AI_* equivalents also
+-- exist (AI_COMPLETE, AI_SENTIMENT, AI_TRANSLATE, ...).
 --
 -- Prerequisites:
---   - Snowflake account with Cortex AI enabled
+--   - Snowflake account with Cortex AI enabled (and the chosen MODEL available
+--     in your region, or cross-region inference enabled)
+--   - SNOWFLAKE.CORTEX_USER database role granted to your role
 --   - A role with USAGE on a warehouse
 --   - No external dependencies or integrations required
 --
 -- Usage:
---   Run the entire script in a Snowflake worksheet or execute sections
---   individually. The sample data uses a temporary table that is
---   automatically cleaned up when the session ends.
+--   Run Steps 0 and 1 first; after that, each step can be run on its own.
+--   The sample data is a temporary table that is dropped automatically when
+--   the session ends. Each row makes one LLM call per function, so keep the
+--   LIMITs if you point this at a larger table.
 --
 -- =============================================================================
 

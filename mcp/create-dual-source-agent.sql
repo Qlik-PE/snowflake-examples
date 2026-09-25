@@ -8,7 +8,9 @@
 --   2. Cortex Analyst — queries a Snowflake Semantic View
 --
 -- The agent reports: expression/SQL generated, tool call count, execution
--- duration, estimated token consumption, and status for each path.
+-- duration, token consumption, and status for each path. Durations and token
+-- counts are the agent's own ESTIMATES, not metered values. For metered usage,
+-- see sql/cortex-agent-token-usage.sql.
 --
 -- What is created:
 --   - Cortex Agent:  <TARGET_DATABASE>.<TARGET_SCHEMA>.<AGENT_NAME>
@@ -65,6 +67,10 @@ DECLARE
     v_warehouse VARCHAR;
     v_spec VARCHAR;
     v_sql VARCHAR;
+    -- The spec must be dollar-quoted, but a literal double-dollar anywhere in
+    -- this block (even in a comment) would end the block early, so the
+    -- delimiter is assembled at runtime.
+    v_dq VARCHAR DEFAULT '$' || '$';
 BEGIN
     SELECT GETVARIABLE('AGENT_NAME') INTO v_agent_name;
     SELECT GETVARIABLE('AGENT_DISPLAY_NAME') INTO v_display_name;
@@ -159,7 +165,7 @@ BEGIN
 
     v_sql := 'CREATE OR REPLACE AGENT ' || v_agent_name
         || ' PROFILE = ''{"display_name": "' || v_display_name || '"}'''
-        || ' FROM SPECIFICATION $$ ' || v_spec || ' $$';
+        || ' FROM SPECIFICATION ' || v_dq || v_spec || v_dq;
     EXECUTE IMMEDIATE v_sql;
 END;
 $$;
@@ -190,7 +196,7 @@ $$;
 -- =============================================================================
 -- Step 4: Test the Agent
 -- =============================================================================
--- Run a sample question to verify the agent works:
+-- Run a sample question; test_status should not be an error.
 
 SELECT TRY_PARSE_JSON(
   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(

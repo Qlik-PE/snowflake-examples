@@ -1,6 +1,11 @@
 -- =============================================================================
 -- Consumer Setup (run after installing the app)
 -- =============================================================================
+-- Grants the app caller access to your warehouse and Qlik MCP server, grants
+-- the app's APP_USER role to USER_ROLE, registers the agent with Snowflake
+-- Intelligence, and starts the Qlik OAuth flow for the current user.
+-- Requires ACCOUNTADMIN (or MANAGE GRANTS). Prefer a non-admin USER_ROLE.
+-- =============================================================================
 
 -- Configuration
 SET APP_NAME = 'YOUR_APP_NAME';
@@ -22,5 +27,5 @@ GRANT APPLICATION ROLE IDENTIFIER($APP_NAME || '.APP_USER') TO ROLE IDENTIFIER($
 ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
     ADD AGENT IDENTIFIER($APP_NAME || '.CORE.MY_AGENT');
 
--- Authenticate with Qlik
+-- Authenticate with Qlik: open the returned URL and approve (once per user)
 SELECT SYSTEM$START_USER_OAUTH_FLOW($QLIK_INTEGRATION);

@@ -2,18 +2,22 @@
 -- Embedded Analytics Starter Kit - Setup Script
 -- =============================================================================
 --
--- This setup script creates all objects for the embedded analytics experience.
--- For production deployment, the data is generated at scale (500 accounts,
--- 13k+ total rows across 24 months). The sample data below is a minimal seed.
+-- Runs when the Native App is installed or upgraded. Creates, in schema CORE:
 --
---   1. Sample SaaS metrics data model (accounts, subscriptions, revenue, usage)
+--   1. A sample SaaS data model (accounts, subscriptions, revenue, usage).
+--      The data is a small seed (20 accounts, Jan + Apr 2024); replace the
+--      INSERTs with your own data or a generator for realistic volumes.
 --   2. Semantic View for Cortex Analyst text-to-SQL
 --   3. Cortex Agent wired to both the Semantic View and Qlik MCP server
 --   4. Application roles and grants
 --
--- The agent provides a unified natural-language interface over:
---   - Snowflake data (via Semantic View / Cortex Analyst)
---   - Qlik Cloud analytics (via MCP server connection)
+-- The agent provides one natural-language interface over:
+--   - Snowflake data (Semantic View / Cortex Analyst), available right after install
+--   - Qlik Cloud analytics (MCP server), available after the consumer runs
+--     scripts/consumer_setup.sql to wire in their own MCP server
+--
+-- Tables use CREATE IF NOT EXISTS + INSERT OVERWRITE, so an upgrade resets the
+-- seed data but keeps the tables.
 --
 -- =============================================================================
 
@@ -33,6 +37,8 @@ GRANT USAGE ON SCHEMA core TO APPLICATION ROLE app_user;
 -- =============================================================================
 -- Reference Registration Callback
 -- =============================================================================
+-- Called by Snowflake when the consumer binds (ADD), unbinds (REMOVE) or
+-- resets (CLEAR) the consumer_warehouse reference declared in manifest.yml.
 
 CREATE OR REPLACE PROCEDURE core.register_reference(ref_name STRING, operation STRING, ref_or_alias STRING)
     RETURNS STRING
@@ -238,9 +244,11 @@ GRANT SELECT ON ALL TABLES IN SCHEMA core TO APPLICATION ROLE app_user;
 -- =============================================================================
 -- Semantic View
 -- =============================================================================
--- The semantic view is created from the YAML spec in semantic/saas_metrics.yaml.
--- In a production Native App, this would reference a staged file. For this
--- example, we inline the semantic view creation.
+-- Created inline with CREATE SEMANTIC VIEW DDL. semantic/saas_metrics.yaml
+-- describes the same model for readers, and adds NRR and churn-rate metrics
+-- that are not implemented here yet.
+-- Categorical attributes and dates are DIMENSIONS (what Cortex Analyst groups
+-- and filters by); numeric columns are FACTS that the METRICS aggregate.
 -- =============================================================================
 
 CREATE OR REPLACE SEMANTIC VIEW core.saas_metrics_sv
@@ -259,25 +267,35 @@ CREATE OR REPLACE SEMANTIC VIEW core.saas_metrics_sv
     MONTHLY_REVENUE(account_id) REFERENCES ACCOUNTS(account_id),
     USAGE_EVENTS(account_id) REFERENCES ACCOUNTS(account_id)
   )
+  -- FACTS: row-level numeric values that metrics aggregate
   FACTS (
-    ACCOUNTS.segment as segment,
-    ACCOUNTS.region as region,
-    ACCOUNTS.industry as industry,
-    ACCOUNTS.status as status,
-    ACCOUNTS.company_name as company_name,
-    ACCOUNTS.signup_date as signup_date,
-    SUBSCRIPTIONS.plan_tier as plan_tier,
     SUBSCRIPTIONS.monthly_price as monthly_price,
-    MONTHLY_REVENUE.revenue_month as revenue_month,
     MONTHLY_REVENUE.mrr as mrr,
     MONTHLY_REVENUE.expansion_mrr as expansion_mrr,
     MONTHLY_REVENUE.contraction_mrr as contraction_mrr,
     MONTHLY_REVENUE.churned_mrr as churned_mrr,
-    USAGE_EVENTS.event_month as event_month,
     USAGE_EVENTS.logins as logins,
     USAGE_EVENTS.api_calls as api_calls,
     USAGE_EVENTS.reports_created as reports_created,
     USAGE_EVENTS.data_gb_scanned as data_gb_scanned
+  )
+  -- DIMENSIONS: attributes and dates that questions group or filter by
+  DIMENSIONS (
+    ACCOUNTS.segment as segment
+      with synonyms=('customer segment', 'tier'),
+    ACCOUNTS.region as region
+      with synonyms=('geo', 'geography'),
+    ACCOUNTS.industry as industry
+      with synonyms=('vertical', 'sector'),
+    ACCOUNTS.status as status
+      with synonyms=('account status'),
+    ACCOUNTS.company_name as company_name
+      with synonyms=('customer name', 'account name'),
+    ACCOUNTS.signup_date as signup_date,
+    SUBSCRIPTIONS.plan_tier as plan_tier
+      with synonyms=('plan', 'pricing tier'),
+    MONTHLY_REVENUE.revenue_month as revenue_month,
+    USAGE_EVENTS.event_month as event_month
   )
   METRICS (
     MONTHLY_REVENUE.total_mrr as SUM(MONTHLY_REVENUE.mrr)
@@ -309,10 +327,9 @@ GRANT SELECT ON SEMANTIC VIEW core.saas_metrics_sv TO APPLICATION ROLE app_user;
 --   1. SaaSMetrics (Cortex Analyst) - queries the Semantic View for Snowflake data
 --   2. Qlik MCP server - accesses Qlik Cloud apps, dashboards, and visualizations
 --
--- The Qlik MCP server reference is parameterized. The consumer provides their
--- own MCP server name via the consumer_setup.sql script, which alters the agent
--- to include their server. Initially, the agent is created with only the
--- Semantic View tool.
+-- The provider cannot know the consumer's MCP server or warehouse, so the agent
+-- is created here with the Semantic View tool only. scripts/consumer_setup.sql
+-- later replaces the spec to add the consumer's warehouse and Qlik MCP server.
 -- =============================================================================
 
 CREATE OR REPLACE AGENT core.analytics_agent
@@ -380,7 +397,7 @@ $$;
 
 GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;
 
--- Set the agent profile so it appears in Snowflake Intelligence / CoWork
+-- Set the display name and avatar shown in Snowflake Intelligence
 ALTER AGENT core.analytics_agent SET
     COMMENT = 'SaaS analytics agent with Qlik Cloud + Snowflake data',
     PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';

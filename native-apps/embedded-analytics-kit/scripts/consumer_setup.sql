@@ -5,10 +5,12 @@
 -- Run this script AFTER installing the Native App.
 --
 -- This script:
---   1. Grants the app caller privileges on your warehouse
---   2. Alters the agent to include your Qlik MCP server
---   3. Registers the agent with Snowflake Intelligence
---   4. Verifies the setup with a test query
+--   1. Grants the app caller USAGE on your warehouse and Qlik MCP server
+--   2. Replaces the agent spec to add the Cortex Analyst warehouse and your
+--      Qlik MCP server
+--   3. Sets the agent's Snowflake Intelligence profile
+--   4. Grants the app's APP_USER role to USER_ROLE
+--   5. Verifies the setup with a test query
 --
 -- Prerequisites:
 --   - The Native App is installed (e.g., as EMBEDDED_ANALYTICS_KIT)
@@ -26,13 +28,13 @@
 SET APP_NAME = 'EMBEDDED_ANALYTICS_KIT';           -- Name of installed Native App
 SET WAREHOUSE = 'CORTEX';                          -- Warehouse for agent execution
 SET QLIK_MCP_SERVER = 'CORTEX_APP.PUBLIC.QLIK_MCP_SERVER';  -- Your Qlik MCP server FQN
-SET USER_ROLE = 'ACCOUNTADMIN';                    -- Role that will use the agent
+SET USER_ROLE = 'ACCOUNTADMIN';                    -- Role that will use the agent (prefer a non-admin role)
 
 -- =============================================================================
 -- Step 1: Grant Caller Privileges
 -- =============================================================================
--- The agent runs under restricted caller's rights. It needs caller grants on
--- your warehouse to execute queries.
+-- The agent runs with restricted caller's rights: it can only use consumer
+-- objects that are explicitly granted to the app with GRANT CALLER.
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
@@ -46,15 +48,30 @@ GRANT CALLER USAGE ON EXTERNAL MCP SERVER IDENTIFIER($QLIK_MCP_SERVER)
     TO APPLICATION IDENTIFIER($APP_NAME);
 
 -- =============================================================================
--- Step 2: Wire the Qlik MCP Server to the Agent
+-- Step 2: Wire the Warehouse and Qlik MCP Server into the Agent
 -- =============================================================================
--- This alters the agent spec to add your Qlik MCP server as a tool source.
--- After this, the agent can access Qlik Cloud tools alongside the Semantic View.
--- IMPORTANT: Update the warehouse name in the spec below to match $WAREHOUSE above.
+-- Replaces the agent's live spec with one that adds:
+--   - the warehouse Cortex Analyst uses ($WAREHOUSE), and
+--   - your Qlik MCP server ($QLIK_MCP_SERVER) as a tool source.
+-- The spec is built inside a scripting block so both session variables can be
+-- concatenated in. A literal double-dollar would end the block, so the spec
+-- delimiter is assembled at runtime.
 -- =============================================================================
 
-ALTER AGENT IDENTIFIER($APP_NAME || '.CORE.ANALYTICS_AGENT')
-    MODIFY LIVE VERSION SET SPECIFICATION $$
+EXECUTE IMMEDIATE
+$$
+DECLARE
+    v_agent VARCHAR;
+    v_wh    VARCHAR;
+    v_mcp   VARCHAR;
+    v_dq    VARCHAR DEFAULT '$' || '$';
+    v_spec  VARCHAR;
+BEGIN
+    SELECT GETVARIABLE('APP_NAME') || '.CORE.ANALYTICS_AGENT' INTO v_agent;
+    SELECT GETVARIABLE('WAREHOUSE') INTO v_wh;
+    SELECT GETVARIABLE('QLIK_MCP_SERVER') INTO v_mcp;
+
+    v_spec := '
 models:
   orchestration: auto
 
@@ -67,7 +84,7 @@ instructions:
        via Cortex Analyst.
 
     2. **Qlik Cloud Analytics** - Explore Qlik applications, dashboards, master items,
-       create visualizations, manage bookmarks, and investigate data using Qlik's
+       create visualizations, manage bookmarks, and investigate data using Qlik''s
        associative engine.
 
     ## When to use each tool:
@@ -97,7 +114,7 @@ instructions:
     - Format numbers clearly (e.g., $45,000 MRR, 95.2% NRR)
 
   orchestration: |
-     Route questions about data metrics to SaaSMetrics.
+    Route questions about data metrics to SaaSMetrics.
     Route questions about dashboards and visualizations to Qlik MCP tools.
     For hybrid requests, query the data first, then create visualizations.
 
@@ -112,30 +129,27 @@ tool_resources:
     semantic_view: "core.saas_metrics_sv"
     execution_environment:
       type: warehouse
-      warehouse: "CORTEX"
+      warehouse: "' || v_wh || '"
+
+mcp_servers:
+  - server_spec:
+      name: "' || v_mcp || '"
+';
+
+    EXECUTE IMMEDIATE 'ALTER AGENT ' || v_agent
+        || ' MODIFY LIVE VERSION SET SPECIFICATION ' || v_dq || v_spec || v_dq;
+END;
 $$;
 
--- Note: The MCP server is added separately via ALTER AGENT ... ADD MCP SERVER
--- because it references a consumer-owned object.
--- If your Snowflake version supports mcp_servers in the spec directly, use:
---
--- mcp_servers:
---   - server_spec:
---       name: "<your_qlik_mcp_server_fqn>"
---
--- appended to the specification above.
-
 -- =============================================================================
--- Step 3: Register with Snowflake Intelligence
+-- Step 3: Snowflake Intelligence Profile
 -- =============================================================================
--- This makes the agent discoverable in the Snowflake Intelligence / CoWork UI.
+-- The agent appears in Snowflake Intelligence once it has a profile and the
+-- user's role has been granted APP_USER (Step 4).
 -- =============================================================================
 
 -- Create the Intelligence object if it doesn't exist
 CREATE SNOWFLAKE INTELLIGENCE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
-
--- Register the agent (may require specific syntax depending on account setup)
--- The agent will appear in Snowflake Intelligence automatically if it has a profile.
 
 ALTER AGENT IDENTIFIER($APP_NAME || '.CORE.ANALYTICS_AGENT')
     SET PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';

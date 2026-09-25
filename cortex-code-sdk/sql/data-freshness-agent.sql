@@ -2,7 +2,7 @@
 -- Data Freshness SLA Monitor Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/data_freshness_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/data_freshness_agent.py.
 --
 -- Checks whether Qlik-managed tables in Snowflake meet their freshness SLAs.
 -- Queries INFORMATION_SCHEMA and table metadata to compute staleness, then
@@ -51,8 +51,10 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
       2. For each table, compute hours since last alteration.
       3. Compare against the SLA threshold (default: 4 hours unless specified).
       4. Flag any table where staleness exceeds the SLA.
-      5. For stale tables, check SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY for tasks
-         targeting the schema. Look at the most recent runs.
+      5. For stale tables, find the most recent runs of tasks targeting the
+         schema. Use the real-time <db>.INFORMATION_SCHEMA.TASK_HISTORY() table
+         function for recent runs; SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY lags by up
+         to ~45 minutes and is only for older history.
       6. Check if any tasks are suspended (SHOW TASKS IN SCHEMA).
       7. If a task failed, include the error message.
       8. If no task exists for a stale table, note "no_task" as the cause.
@@ -85,6 +87,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

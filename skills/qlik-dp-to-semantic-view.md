@@ -109,6 +109,7 @@ Worked example from the TPC-H glossary:
 | Discounted Revenue | `SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` | `LINEITEM.DISCOUNTED_REVENUE as SUM(L_EXTENDEDPRICE * (1 - L_DISCOUNT))` |
 | Order Total Price | `ORDERS.O_TOTALPRICE` aggregated | `ORDERS.TOTAL_ORDER_PRICE as SUM(O_TOTALPRICE)` |
 | Quantity | `SUM(L_QUANTITY)` | `LINEITEM.TOTAL_QUANTITY as SUM(L_QUANTITY)` |
+
 When there is **no glossary**, add a conservative baseline per table — a count on each entity plus the obvious additive sums — and derive revenue from line-item columns:
 
 ```
@@ -130,6 +131,8 @@ LINEITEM(L_PARTKEY, L_SUPPKEY) references PARTSUPP(PS_PARTKEY, PS_SUPPKEY)
 Check row counts before declaring a relationship — a "1:many" that is actually many:many will fan out and inflate every metric. Validate with a quick count comparison rather than trusting the documentation.
 
 ### Step 7 — Assemble the DDL
+
+Abridged Northwind example (the `ORDERS` table referenced in `RELATIONSHIPS` is omitted for brevity; a real view must define every table it relates):
 
 ```sql
 CREATE OR REPLACE SEMANTIC VIEW <DB>.<SCHEMA>.<NAME>
@@ -172,7 +175,7 @@ CREATE OR REPLACE SEMANTIC VIEW <DB>.<SCHEMA>.<NAME>
     ORDER_DETAILS.TOTAL_REVENUE AS SUM(UNITPRICE * QUANTITY * (1 - DISCOUNT))
       COMMENT = 'Total revenue for order line items after discount.'
   )
-  COMMENT = 'Conformed Northwind Traders data model. Source Qlik data product: **AI-Ready Data Product** - https://partner-engineering-saas.us.qlikcloud.com/data-product/6a70b73500834b2f27ad071b - data quality/trust score continuously monitored by Qlik Cloud (current trust score: 99.62/100). Physical source tables: SUMMIT."silver_layer2".*'
+  COMMENT = 'Conformed Northwind Traders data model. Source Qlik data product: **AI-Ready Data Product** - https://<tenant>.qlikcloud.com/data-product/<data-product-id> - data quality/trust score continuously monitored by Qlik Cloud (current trust score: 99.62/100). Physical source tables: SUMMIT."silver_layer2".*'
 ```
 
 ### Step 8 — Preserve Provenance

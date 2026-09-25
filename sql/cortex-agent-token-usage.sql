@@ -18,7 +18,7 @@
 --   The two arrays are positionally aligned, so one FLATTEN chain over
 --   CREDITS_GRANULAR plus a positional GET() into TOKENS_GRANULAR is enough.
 --
--- Columns returned:
+-- Columns returned by query 3 (the main breakdown):
 --   AGENT_DATABASE_NAME/SCHEMA/NAME — agent identity ('(no agent)' for direct
 --                                     REST / Cortex Analyst calls with no agent object)
 --   SERVICE_TYPE                   — cortex_agents, cortex_analyst, ...

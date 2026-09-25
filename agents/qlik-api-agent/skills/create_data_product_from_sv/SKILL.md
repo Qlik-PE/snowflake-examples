@@ -22,6 +22,7 @@ Official Qlik MCP tool names used by this skill:
 - `qlik_get_data_product` — Get metadata for a data product
 - `qlik_update_data_product` — Update data product properties (name, description, readme, datasets)
 - `qlik_delete_data_product` — Delete a data product
+- `qlik_delete_glossary_term` — Delete a glossary term (used only for rollback)
 - `qlik_get_dataset` — Get dataset metadata
 - `qlik_get_dataset_schema` — Get dataset column definitions
 
@@ -110,12 +111,15 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
    - `name`: "<semantic_view_short_name> Data Product"
    - `description`: "Data product from Snowflake Semantic View <full_name>. Contains <N> datasets and a business glossary."
    - `spaceId`: the spaceId from Step 0
+   - If the tool's input schema accepts the datasets directly (e.g. a `datasetIds` / `datasets` parameter), pass the dataset IDs from GATE 2 here.
 2. Capture `dataProductId`. Add `{type: "data_product", id: <id>}` to `created_artifacts`.
    - If creation fails: **STOP**. Datasets and glossary remain as standalone assets.
+3. **Attach the datasets** (skip only if they were already passed in step 1): call `qlik_update_data_product` with `dataProductId` and the list of dataset IDs from GATE 2. Check the tool's input schema for the exact parameter name.
+4. Call `qlik_get_data_product` and confirm that the number of linked datasets equals the number created in Step 2. If it doesn't, retry step 3 once; if it still doesn't match, report the missing dataset IDs and **ROLLBACK**.
 
 **IMPORTANT: Do NOT activate the data product. Leave it in draft.**
 
-**GATE 4**: Data product created (in draft).
+**GATE 4**: Data product created (in draft), with every dataset from Step 2 attached.
 
 ### Step 5: Set documentation, link glossary
 
@@ -159,7 +163,11 @@ If ANY dataset failed and could not be retried: **ROLLBACK**.
    | SUPPLIER | S_NATIONKEY | → | NATION | N_NATIONKEY |
 
    ^^^ Example for TPCH — replace with actual DDL relationships.
-   Include ALL relationships. One row per FK→PK. No prose summaries.
+   Include ALL relationships. One row per FK→PK column pair. No prose summaries.
+   Composite keys: write one row per column pair, in order, with the same From/To tables
+   (e.g. `LINEITEM(L_PARTKEY, L_SUPPKEY) references PARTSUPP(PS_PARTKEY, PS_SUPPKEY)` becomes
+   `LINEITEM | L_PARTKEY | → | PARTSUPP | PS_PARTKEY` and `LINEITEM | L_SUPPKEY | → | PARTSUPP | PS_SUPPKEY`).
+   The create_app_from_data_product skill regroups these rows into one composite link.
 
    ### Metrics
 
@@ -234,6 +242,6 @@ If rollback is needed at any point:
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
 3. If user confirms, delete in **reverse** order:
    - Data product: `qlik_delete_data_product` with `dataProductId`
-   - Glossary: `qlik_delete_glossary_term` for each term, then delete the glossary via `qlik_search` to find its catalog item
-   - Datasets: datasets were created via stored procedure and cannot be deleted via MCP — report their IDs for manual cleanup
+   - Glossary: call `qlik_delete_glossary_term` for each term created. No available tool deletes the glossary itself, so report its ID and name for manual deletion in Qlik Cloud.
+   - Datasets: no available tool deletes datasets, so report their IDs for manual cleanup in the Qlik Cloud catalog.
 4. Confirm deletion of each artifact.

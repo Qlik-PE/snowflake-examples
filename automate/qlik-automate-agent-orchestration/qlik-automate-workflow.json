@@ -1,7 +1,7 @@
 {
-  "_comment": "Qlik Automate workflow: Cortex Agent Freshness Monitor. Import this into Qlik Automate via Management Console > Automations > Create > Import. Replace all <placeholder> values before activating.",
+  "_comment": "Reference definition of the Cortex Agent Freshness Monitor workflow. It lists every block and setting; import it (Automate > Create automation > Import) or rebuild the blocks in the editor if your tenant's import format differs. Replace all <placeholder> values before enabling.",
   "name": "Snowflake Cortex Agent — Freshness SLA Monitor",
-  "description": "Calls a Snowflake Cortex Agent via REST API to check data freshness SLAs, routes alerts on breach, and writes audit records back to Snowflake.",
+  "description": "Runs a Snowflake Cortex Agent freshness check through RUN_FRESHNESS_CHECK, alerts and reloads a Qlik app on breach, and alerts if the check itself fails. The procedure writes the audit record.",
   "state": "disabled",
   "triggers": [
     {
@@ -18,7 +18,7 @@
       "id": "start",
       "type": "start",
       "name": "Start — Scheduled or Webhook",
-      "comment": "Trigger: cron schedule (every 4h) or external webhook. To use webhook trigger instead, change triggers[0].type to 'webhook' and use the generated URL.",
+      "comment": "Trigger: cron schedule (every 4h) or external webhook. To use a webhook trigger instead, change triggers[0].type to 'webhook' and use the generated URL.",
       "outputs": ["set_variables"]
     },
     {
@@ -27,8 +27,6 @@
       "name": "Set Configuration Variables",
       "comment": "Central config — edit these values for your environment.",
       "variables": {
-        "snowflake_account_url": "<your-account>.snowflakecomputing.com",
-        "snowflake_pat": "<your-personal-access-token>",
         "agent_database": "CORTEX_CODE",
         "agent_schema": "PUBLIC",
         "agent_name": "QLIK_AUTOMATE_FRESHNESS_AGENT",
@@ -37,72 +35,41 @@
         "slack_webhook_url": "<your-slack-incoming-webhook-url>",
         "qlik_app_id_to_reload": "<your-qlik-app-id>"
       },
-      "outputs": ["call_agent"]
+      "outputs": ["run_check"]
     },
     {
-      "id": "call_agent",
-      "type": "callUrl",
-      "name": "Call Snowflake Cortex Agent REST API",
-      "comment": "POST to the Cortex Agent :run endpoint. The agent returns structured JSON with freshness status for all tables.",
-      "method": "POST",
-      "url": "https://{$.set_variables.snowflake_account_url}/api/v2/databases/{$.set_variables.agent_database}/schemas/{$.set_variables.agent_schema}/agents/{$.set_variables.agent_name}:run",
-      "headers": {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": "Bearer {$.set_variables.snowflake_pat}"
+      "id": "run_check",
+      "type": "snowflake",
+      "name": "Run Freshness Check (Cortex Agent)",
+      "comment": "Calls RUN_FRESHNESS_CHECK, which runs the agent, extracts its JSON answer, writes the audit row and returns ONE row: STATUS ('ok' | 'breach' | 'error'), TOTAL_TABLES, TABLES_OK, TABLES_BREACHED, BREACHES (JSON text), AGENT_JSON (JSON text). Agent runs can take a minute or more; allow a long query timeout.",
+      "connector": "snowflake",
+      "operation": "executeQuery",
+      "parameters": {
+        "query": "CALL {$.set_variables.agent_database}.{$.set_variables.agent_schema}.RUN_FRESHNESS_CHECK('{$.set_variables.agent_database}.{$.set_variables.agent_schema}.{$.set_variables.agent_name}', '{$.set_variables.target_schema}', {$.set_variables.sla_hours})"
       },
-      "body": {
-        "messages": [
-          {
-            "role": "user",
-            "content": [
-              {
-                "type": "text",
-                "text": "Check freshness for {$.set_variables.target_schema} with a {$.set_variables.sla_hours}-hour SLA."
-              }
-            ]
-          }
-        ]
-      },
-      "timeout": 120,
-      "outputs": ["parse_response"]
+      "outputs": ["check_breach"]
     },
     {
-      "id": "parse_response",
-      "type": "variable",
-      "name": "Parse Agent Response",
-      "comment": "Extract the JSON payload from the agent response. The agent returns a JSON code block in the last message content. This block extracts key fields for downstream routing.",
-      "variables": {
-        "agent_json": "{$.call_agent.body}",
-        "status": "{$.call_agent.body.status}",
-        "total_tables": "{$.call_agent.body.summary.total_tables}",
-        "tables_ok": "{$.call_agent.body.summary.tables_ok}",
-        "tables_breached": "{$.call_agent.body.summary.tables_breached}",
-        "breaches": "{$.call_agent.body.breaches}"
-      },
-      "outputs": ["check_status"]
-    },
-    {
-      "id": "check_status",
+      "id": "check_breach",
       "type": "condition",
       "name": "SLA Breach?",
-      "comment": "Branch based on whether any tables breached their SLA.",
-      "condition": "{$.parse_response.status} == 'breach'",
+      "comment": "Reads STATUS from the first (only) row returned by run_check. Adjust the row/column reference to your tenant's output mapping for the Snowflake block.",
+      "condition": "{$.run_check[0].STATUS} == 'breach'",
       "true_output": "send_slack_alert",
-      "false_output": "write_audit_ok"
+      "false_output": "check_error"
     },
     {
       "id": "send_slack_alert",
       "type": "callUrl",
       "name": "Send Slack Alert",
-      "comment": "Posts a breach notification to Slack. Replace with Teams webhook or email block as needed.",
+      "comment": "Posts a breach notification to Slack. Replace with a Teams webhook or email block as needed.",
       "method": "POST",
       "url": "{$.set_variables.slack_webhook_url}",
       "headers": {
         "Content-Type": "application/json"
       },
       "body": {
-        "text": ":rotating_light: *Freshness SLA Breach Detected*\n\n*Schema:* `{$.set_variables.target_schema}`\n*Tables Breached:* {$.parse_response.tables_breached} of {$.parse_response.total_tables}\n*SLA Threshold:* {$.set_variables.sla_hours} hours\n\nBreached tables:\n```\n{$.parse_response.breaches}\n```\n\n_Triggered by Qlik Automate → Snowflake Cortex Agent_"
+        "text": ":rotating_light: *Freshness SLA Breach Detected*\n\n*Schema:* `{$.set_variables.target_schema}`\n*Tables Breached:* {$.run_check[0].TABLES_BREACHED} of {$.run_check[0].TOTAL_TABLES}\n*SLA Threshold:* {$.set_variables.sla_hours} hours\n\nBreached tables:\n```\n{$.run_check[0].BREACHES}\n```\n\n_Triggered by Qlik Automate → Snowflake Cortex Agent_"
       },
       "outputs": ["reload_qlik_app"]
     },
@@ -110,35 +77,35 @@
       "id": "reload_qlik_app",
       "type": "qlikCloud",
       "name": "Reload Qlik App (remediation)",
-      "comment": "Triggers a reload of the Qlik app that feeds the stale tables. Uses the native Qlik Cloud connector. Remove this block if remediation is handled differently.",
+      "comment": "Reloads the Qlik app that consumes the stale tables, using the native Qlik Cloud connector. Remove this block if remediation is handled differently.",
       "connector": "qlik-cloud",
       "operation": "reloadApp",
       "parameters": {
         "appId": "{$.set_variables.qlik_app_id_to_reload}"
       },
-      "outputs": ["write_audit_breach"]
-    },
-    {
-      "id": "write_audit_breach",
-      "type": "snowflake",
-      "name": "Write Audit Record (breach)",
-      "comment": "Inserts a breach record into the Snowflake audit table using the native Snowflake connector.",
-      "connector": "snowflake",
-      "operation": "executeQuery",
-      "parameters": {
-        "query": "INSERT INTO CORTEX_CODE.PUBLIC.FRESHNESS_AUDIT_LOG (schema_checked, sla_hours, total_tables, tables_ok, tables_breached, breached_tables, agent_response) SELECT '{$.set_variables.target_schema}', {$.set_variables.sla_hours}, {$.parse_response.total_tables}, {$.parse_response.tables_ok}, {$.parse_response.tables_breached}, PARSE_JSON($${$.parse_response.breaches}$$), PARSE_JSON($${$.parse_response.agent_json}$$)"
-      },
       "outputs": ["end"]
     },
     {
-      "id": "write_audit_ok",
-      "type": "snowflake",
-      "name": "Write Audit Record (ok)",
-      "comment": "Inserts a success record into the Snowflake audit table.",
-      "connector": "snowflake",
-      "operation": "executeQuery",
-      "parameters": {
-        "query": "INSERT INTO CORTEX_CODE.PUBLIC.FRESHNESS_AUDIT_LOG (schema_checked, sla_hours, total_tables, tables_ok, tables_breached, breached_tables, agent_response) SELECT '{$.set_variables.target_schema}', {$.set_variables.sla_hours}, {$.parse_response.total_tables}, {$.parse_response.tables_ok}, 0, NULL, PARSE_JSON($${$.parse_response.agent_json}$$)"
+      "id": "check_error",
+      "type": "condition",
+      "name": "Check Failed?",
+      "comment": "STATUS 'error' means the agent returned no parseable answer. The raw response is in the audit row and in AGENT_JSON.",
+      "condition": "{$.run_check[0].STATUS} == 'error'",
+      "true_output": "send_error_alert",
+      "false_output": "end"
+    },
+    {
+      "id": "send_error_alert",
+      "type": "callUrl",
+      "name": "Send Slack Alert (check failed)",
+      "comment": "Tells the team the freshness check itself failed, so a silent monitor doesn't look like a healthy schema.",
+      "method": "POST",
+      "url": "{$.set_variables.slack_webhook_url}",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "text": ":warning: *Freshness check failed* for `{$.set_variables.target_schema}`: the Cortex Agent returned no valid JSON answer. See FRESHNESS_AUDIT_LOG.agent_response for the raw response."
       },
       "outputs": ["end"]
     },
@@ -153,7 +120,7 @@
       "id": "snowflake",
       "type": "snowflake",
       "name": "Snowflake (key-pair auth)",
-      "comment": "Configure in Qlik Automate: Connections > Add > Snowflake. Use key-pair authentication with an encrypted .p8 private key. See README for setup steps.",
+      "comment": "Configure in Qlik Automate: Connections > Add > Snowflake. Use key-pair authentication with an encrypted .p8 private key and a service user whose role has the grants listed in setup.sql. See README for setup steps.",
       "parameters": {
         "account": "<your-account>",
         "username": "<your-service-user>",

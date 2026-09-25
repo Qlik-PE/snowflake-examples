@@ -1,14 +1,32 @@
 -- =============================================================================
 -- Qlik API Agent - Setup Script
--- Creates a Cortex Agent that interacts with Qlik Cloud REST API
 -- =============================================================================
+-- Creates a Cortex Agent that calls the Qlik Cloud REST API through Python
+-- stored procedures, plus the Qlik MCP server for spaces, glossaries and data
+-- products.
+--
+-- Objects created (in TARGET_DB.TARGET_SCHEMA):
+--   - Network rule QLIK_CLOUD_NETWORK_RULE, secrets QLIK_API_KEY_SECRET and
+--     QLIK_TENANT_SECRET, external access integration QLIK_CLOUD_EAI
+--   - Procedures: CREATE_QLIK_APP, SET_QLIK_APP_SCRIPT, GET_SEMANTIC_VIEW_DDL,
+--     GET_TABLE_COLUMNS, CREATE_QLIK_DATASET, LINK_GLOSSARY_TO_DATA_PRODUCT,
+--     RELOAD_QLIK_APP
+--   - Stage AGENT_SKILLS_STAGE (skill files) and agent QLIK_API_AGENT
+--
 -- Prerequisites:
---   - ACCOUNTADMIN role (for EAI and integrations)
---   - A Qlik Cloud tenant with a valid API key
---   - An existing EXTERNAL MCP SERVER for Qlik Cloud (optional but recommended)
---   - Replace <QLIK_TENANT> with your tenant hostname
---   - Replace <QLIK_API_KEY> with your Qlik API key
---   - Replace <QLIK_MCP_SERVER> with your External MCP Server FQN (or NULL to skip)
+--   - ACCOUNTADMIN (needed for the external access integration)
+--   - A Qlik Cloud tenant and an API key
+--   - An EXTERNAL MCP SERVER for Qlik Cloud (see mcp/create-mcp-agent.sql).
+--     The skills depend on it.
+--
+-- Before running, replace:
+--   1. The SET values below
+--   2. '<QLIK_API_KEY>' in section 2
+--   3. <WAREHOUSE> (7x) and <QLIK_MCP_SERVER> (1x) inside the agent spec in
+--      section 6. The spec is a $$ literal, so session variables are NOT
+--      substituted there.
+--
+-- After running, upload the full skill files with PUT (see section 5).
 -- =============================================================================
 
 -- >>> CONFIGURE THESE VARIABLES BEFORE RUNNING <<<
@@ -139,7 +157,8 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
--- 4c. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+-- 4d. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+-- Identifiers are validated before being interpolated into the query.
 CREATE OR REPLACE PROCEDURE GET_TABLE_COLUMNS(
   DATABASE_NAME VARCHAR,
   SCHEMA_NAME VARCHAR,
@@ -183,10 +202,15 @@ def get_columns(session, database_name, schema_name, table_name):
     ]
 $$;
 
--- 4d. Create Qlik Dataset (catalog-integration API)
--- Uses the internal create-hierarchy-for-connected-datasets endpoint
--- that the Qlik UI uses. Auto-discovers table metadata from INFORMATION_SCHEMA
--- and creates the dataset in a single call (no QRI/dataAsset discovery needed).
+-- 4e. Create Qlik Dataset (catalog-integration API)
+-- Registers a Snowflake table as a Qlik dataset in a single call (no QRI or
+-- data-asset lookup). Reads the columns from INFORMATION_SCHEMA, maps them to
+-- JDBC type codes and builds the selection script.
+-- NOTE: create-hierarchy-for-connected-datasets is the endpoint the Qlik Cloud
+-- UI uses. It is not part of the documented public API and may change.
+-- SPACE_ID and CONNECTION_ID are required (the agent's tool schema marks them
+-- required). Their NULL defaults only make a direct CALL without them return a
+-- readable error instead of a signature mismatch.
 CREATE OR REPLACE PROCEDURE CREATE_QLIK_DATASET(
     DB VARCHAR, SCH VARCHAR, TBL VARCHAR,
     SPACE_ID VARCHAR DEFAULT NULL,
@@ -331,7 +355,9 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 $$;
 
--- 4e. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
+-- 4f. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
+-- Reads the current glossaryIds, appends the new one, and writes the full list
+-- back with a JSON Patch "replace" (so existing links are kept).
 CREATE OR REPLACE PROCEDURE LINK_GLOSSARY_TO_DATA_PRODUCT(
   DATA_PRODUCT_ID VARCHAR,
   GLOSSARY_ID VARCHAR
@@ -380,7 +406,8 @@ def link_glossary(session, data_product_id, glossary_id):
     }
 $$;
 
--- 4f. Reload Qlik App (POST /api/v1/reloads)
+-- 4g. Reload Qlik App (POST /api/v1/reloads)
+-- Triggers a reload, then polls its status every 10 s for up to 5 minutes.
 CREATE OR REPLACE PROCEDURE RELOAD_QLIK_APP(
   APP_ID VARCHAR
 )
@@ -445,20 +472,22 @@ def reload_app(session, app_id):
     }
 $$;
 
--- NOTE: The following Qlik operations are handled by the Qlik MCP server
--- registered in CoCo, not by stored procedures:
---   - List spaces:           mcp__qlik-local__spaces__list
---   - Create glossary:       mcp__qlik-local__glossaries__create
---   - Create glossary term:  mcp__qlik-local__glossaries__create_term
---   - Create data product:   mcp__qlik-local__data_products__create
+-- NOTE: No procedures exist for these Qlik operations. The agent uses the
+-- Qlik MCP server attached in the agent spec (mcp_servers) instead:
+--   - List/search spaces:    qlik_search_spaces
+--   - Create glossary/term:  qlik_create_glossary, qlik_create_glossary_term
+--   - Create data product:   qlik_create_data_product
+-- The External MCP Server adds a server prefix to these names; the skills
+-- resolve the prefixed names by suffix.
 
 -- =============================================================================
 -- 5. Upload Skill to Stage
 -- =============================================================================
 CREATE STAGE IF NOT EXISTS AGENT_SKILLS_STAGE;
 
--- NOTE: These COPY INTO commands upload lightweight stubs only. The full skill
--- instructions must be uploaded separately using PUT:
+-- The COPY INTO statements below only write short placeholder SKILL.md stubs,
+-- so the stage paths exist when the agent is created. The agent needs the FULL
+-- skill instructions, so upload them afterwards with PUT (from the repo root):
 --   PUT file:///.../skills/create_data_product_from_sv/SKILL.md
 --       @AGENT_SKILLS_STAGE/create_data_product_from_sv/ AUTO_COMPRESS=FALSE OVERWRITE=TRUE
 --   PUT file:///.../skills/create_app_from_data_product/SKILL.md
@@ -488,9 +517,9 @@ $$)
 -- =============================================================================
 -- 6. Create the Agent
 -- =============================================================================
--- NOTE: The agent spec is a $$ literal string — session variables like
--- $WAREHOUSE and $QLIK_MCP_SERVER cannot be interpolated inside it.
--- Replace <WAREHOUSE> and <QLIK_MCP_SERVER> below with your actual values.
+-- NOTE: The agent spec is a $$ literal, so session variables like $WAREHOUSE
+-- and $QLIK_MCP_SERVER are NOT substituted inside it. Replace every
+-- <WAREHOUSE> and <QLIK_MCP_SERVER> below with the actual values.
 CREATE OR REPLACE AGENT QLIK_API_AGENT
   COMMENT = 'Cortex Agent that integrates Snowflake with Qlik Cloud. Creates data products from semantic views, builds Qlik Sense apps with load scripts, glossaries, master items, and analytics sheets.'
   FROM SPECIFICATION $$
@@ -587,7 +616,7 @@ tools:
   - tool_spec:
       type: generic
       name: create_qlik_dataset
-      description: "Creates a Qlik dataset from a Snowflake table using the catalog-integration API. Auto-discovers columns from INFORMATION_SCHEMA. No QRI or data asset discovery needed."
+      description: "Creates a Qlik dataset from a Snowflake table using the catalog-integration API. Auto-discovers columns from INFORMATION_SCHEMA. No QRI or data asset discovery needed. SPACE_ID and CONNECTION_ID are required."
       input_schema:
         type: object
         properties:
@@ -602,14 +631,14 @@ tools:
             description: "Snowflake table name"
           SPACE_ID:
             type: string
-            description: "Qlik space ID (optional, defaults to Snowflake shared space)"
+            description: "Qlik space ID to create the dataset in - REQUIRED"
           CONNECTION_ID:
             type: string
-            description: "Qlik connection ID for the Snowflake connection (optional)"
+            description: "ID of the Qlik data connection to Snowflake - REQUIRED (resolve it with qlik_search, resourceType dataconnection)"
           SF_ROLE:
             type: string
             description: "Snowflake role for Qlik to use (optional, defaults to QLIK_DATA_PRODUCT)"
-        required: [DB, SCH, TBL]
+        required: [DB, SCH, TBL, SPACE_ID, CONNECTION_ID]
   - tool_spec:
       type: generic
       name: get_table_columns
@@ -710,13 +739,13 @@ mcp_servers:
 $$;
 
 -- =============================================================================
--- 7. Register agent in Snowflake CoWork
+-- 7. (Optional) Register the agent with Snowflake Intelligence
 -- =============================================================================
--- If your account has a Snowflake CoWork object, add the agent to make it
--- visible in CoWork. Skip if no CoWork object exists (agents are still
--- accessible via SQL/REST API and direct link in Snowsight).
+-- Adding the agent to the Snowflake Intelligence object makes it appear in the
+-- Snowflake Intelligence UI. Without this step the agent is still reachable
+-- through SQL, the REST API and Snowsight.
 --
--- To check if a CoWork object exists:
+-- To check whether the object exists:
 --   SHOW SNOWFLAKE INTELLIGENCE;
 --
 -- To create one if needed:
@@ -726,11 +755,11 @@ $$;
 -- ALTER SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT
 --   ADD AGENT QLIK_API_AGENT;
 
--- Grant USAGE so users can see and use the agent in CoWork:
+-- Grant USAGE so users can see and use the agent:
 -- GRANT USAGE ON AGENT QLIK_API_AGENT TO ROLE <user_role>;
 
 -- =============================================================================
--- 8. Test the agent
+-- 8. Test the agent (replace <DB>.<SCHEMA>, and a space when prompted)
 -- =============================================================================
 -- SELECT TRY_PARSE_JSON(
 --   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(

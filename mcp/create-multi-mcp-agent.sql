@@ -17,7 +17,7 @@
 -- Prerequisites:
 --   - Two existing External MCP Servers (created via CREATE EXTERNAL MCP SERVER
 --     or the Snowflake UI)
---   - OAuth authentication completed for both servers
+--   - OAuth authentication completed for both servers (Step 4)
 --   - ACCOUNTADMIN or a role with CREATE AGENT on the target schema
 --
 -- Architecture:
@@ -30,12 +30,12 @@
 --   │  MCP Server 1: Qlik       │  MCP Server 2: <Second>     │
 --   │  (analytics & dashboards) │  (CRM, issues, repos, etc.) │
 --   │                           │                             │
---   │  Tools:                   │  Tools:                     │
---   │  • qlik_list_apps         │  • (varies by provider)     │
---   │  • qlik_get_fields        │  • search, create, update   │
---   │  • qlik_create_data_obj   │  • list, describe, etc.     │
---   │  • qlik_get_chart_data    │                             │
+--   │  Tools (examples):        │  Tools:                     │
+--   │  • qlik_get_fields        │  • (varies by provider)     │
+--   │  • qlik_create_data_object│  • search, create, update   │
+--   │  • qlik_get_chart_data    │  • list, describe, etc.     │
 --   │  • qlik_list_measures     │                             │
+--   │  • qlik_create_sheet      │                             │
 --   └───────────────────────────┴─────────────────────────────┘
 --
 -- Usage:
@@ -88,6 +88,10 @@ DECLARE
     v_second_desc VARCHAR;
     v_spec VARCHAR;
     v_sql VARCHAR;
+    -- The spec must be dollar-quoted, but a literal double-dollar anywhere in
+    -- this block (even in a comment) would end the block early, so the
+    -- delimiter is assembled at runtime.
+    v_dq VARCHAR DEFAULT '$' || '$';
 BEGIN
     SELECT GETVARIABLE('AGENT_NAME') INTO v_agent_name;
     SELECT GETVARIABLE('AGENT_DISPLAY_NAME') INTO v_display_name;
@@ -160,7 +164,7 @@ BEGIN
 
     v_sql := 'CREATE OR REPLACE AGENT ' || v_agent_name
         || ' PROFILE = ''{"display_name": "' || v_display_name || '", "avatar": "SparklesAgentIcon"}'''
-        || ' FROM SPECIFICATION $$ ' || v_spec || ' $$';
+        || ' FROM SPECIFICATION ' || v_dq || v_spec || v_dq;
     EXECUTE IMMEDIATE v_sql;
 END;
 $$;
@@ -251,4 +255,4 @@ SELECT TRY_PARSE_JSON(
 -- =============================================================================
 -- Cleanup (run manually when done)
 -- =============================================================================
--- DROP AGENT MULTI_MCP_AGENT;
+-- DROP AGENT MULTI_MCP_AGENT;   -- default AGENT_NAME; adjust if you changed it

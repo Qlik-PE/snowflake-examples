@@ -6,8 +6,12 @@ Prototype demonstrating the Cortex Code Agent SDK for the
 
 Simulates a Qlik webhook trigger: when a reload or
 Replicate task fails, a CoCo agent session investigates the
-Snowflake side (QUERY_HISTORY, WAREHOUSE_EVENTS, etc.) and
+Snowflake side (QUERY_HISTORY, WAREHOUSE_EVENTS_HISTORY, etc.) and
 returns a structured JSON report with root cause + remediation.
+
+Because SNOWFLAKE.ACCOUNT_USAGE lags by up to ~45 minutes, the prompt tells
+the agent to use the real-time INFORMATION_SCHEMA.QUERY_HISTORY table function
+for recent failures.
 
 Usage:
     source .venv/bin/activate
@@ -80,9 +84,16 @@ Context from the Qlik alert:
 - Error hint: "{error_hint}"
 
 Investigation steps:
-1. Query SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY for failed queries
-   (EXECUTION_STATUS != 'SUCCESS') in the last {minutes} minutes,
-   filtered to warehouse '{warehouse}' if it is not '*'.
+1. Find failed queries (EXECUTION_STATUS / ERROR_CODE set) in the last
+   {minutes} minutes, filtered to warehouse '{warehouse}' if it is not '*'.
+   SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY lags by up to ~45 minutes, so for
+   recent activity use the real-time table function
+   TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(
+       END_TIME_RANGE_START => DATEADD('minute', -{minutes}, CURRENT_TIMESTAMP()),
+       RESULT_LIMIT => 10000))
+   (or QUERY_HISTORY_BY_WAREHOUSE for a single warehouse). Use ACCOUNT_USAGE
+   only for the part of the window older than ~45 minutes, and de-duplicate
+   on QUERY_ID if you query both.
 2. Look for patterns: repeated errors, resource contention, credential
    issues, object-not-found, timeouts, etc.
 3. If relevant, check WAREHOUSE_LOAD_HISTORY or WAREHOUSE_EVENTS_HISTORY

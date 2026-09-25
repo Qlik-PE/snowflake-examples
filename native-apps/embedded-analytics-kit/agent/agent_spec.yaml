@@ -6,8 +6,9 @@
 #   - Diffing changes across versions
 #   - Generating documentation
 #
-# After consumer connects their Qlik MCP server (via consumer_setup.sql),
-# the agent spec is altered to include the mcp_servers block below.
+# This is the spec as installed by setup_script.sql. scripts/consumer_setup.sql
+# later replaces it with a version that adds the Cortex Analyst warehouse and an
+# mcp_servers block for the consumer's Qlik MCP server.
 
 models:
   orchestration: auto
@@ -62,5 +63,5 @@ tool_resources:
   SaaSMetrics:
     semantic_view: "core.saas_metrics_sv"
 
-# Note: execution_environment (warehouse) and mcp_servers are configured by
-# the consumer via consumer_setup.sql after installation.
+# Note: execution_environment (warehouse) and mcp_servers are added by
+# scripts/consumer_setup.sql after installation.

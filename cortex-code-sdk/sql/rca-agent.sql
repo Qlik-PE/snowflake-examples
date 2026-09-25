@@ -5,7 +5,7 @@
 -- SQL equivalent of cortex-code-sdk/sdk/rca_agent.py.
 --
 -- Investigates Snowflake-side failures when a Qlik reload or CDC pipeline
--- errors out. Queries QUERY_HISTORY, WAREHOUSE_EVENTS, and other
+-- errors out. Queries QUERY_HISTORY, WAREHOUSE_EVENTS_HISTORY, and other
 -- ACCOUNT_USAGE views to produce a root-cause report with remediation SQL.
 --
 -- SDK version:  Single-shot query() with structured output (JSON Schema)
@@ -50,8 +50,12 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
       matching failures, say so clearly in the summary.
 
       Investigation workflow:
-      1. Query SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY for failed queries
-         (EXECUTION_STATUS != 'SUCCESS') in the specified time window.
+      1. Find failed queries (EXECUTION_STATUS / ERROR_CODE set) in the specified
+         time window. SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY lags by up to ~45
+         minutes, so for recent activity use the real-time table function
+         TABLE(INFORMATION_SCHEMA.QUERY_HISTORY(END_TIME_RANGE_START => ...,
+         RESULT_LIMIT => 10000)) or QUERY_HISTORY_BY_WAREHOUSE. Use ACCOUNT_USAGE
+         for older periods, de-duplicating on QUERY_ID if you use both.
       2. Look for patterns: repeated errors, resource contention, credential
          issues, object-not-found, timeouts, etc.
       3. If relevant, check WAREHOUSE_LOAD_HISTORY or WAREHOUSE_EVENTS_HISTORY
@@ -86,6 +90,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 -- Two options: SQL (DATA_AGENT_RUN) or REST API (curl).
 -- Uncomment the approach you prefer.
 

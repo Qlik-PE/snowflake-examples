@@ -2,7 +2,7 @@
 -- SQL Optimizer Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/sql_optimizer_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/sql_optimizer_agent.py.
 --
 -- Accepts a raw SQL query, analyzes it against Snowflake best practices,
 -- and returns a properly formatted and optimized version with per-optimization
@@ -102,6 +102,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

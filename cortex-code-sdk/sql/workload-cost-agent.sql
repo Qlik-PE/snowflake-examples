@@ -2,7 +2,7 @@
 -- Workload Cost Attribution Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/workload_cost_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/workload_cost_agent.py.
 --
 -- Attributes Snowflake credit consumption to Qlik-originated workloads.
 -- Breaks down costs by warehouse, surfaces the most expensive queries, and
@@ -80,6 +80,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

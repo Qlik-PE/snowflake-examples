@@ -63,15 +63,20 @@ GRANT SELECT ON ALL TABLES IN SCHEMA core TO APPLICATION ROLE app_user;
 -- =============================================================================
 -- 4. Semantic View (REPLACE WITH YOUR OWN)
 -- =============================================================================
+-- Commented out so the template installs as-is. The agent below references
+-- core.my_semantic_view, so uncomment and adapt this before real use.
+-- Numeric columns go in FACTS; attributes and dates in DIMENSIONS.
 
 -- CREATE OR REPLACE SEMANTIC VIEW core.my_semantic_view
 --   TABLES (
 --     core.my_table primary key (id) comment='Description of your table'
 --   )
 --   FACTS (
+--     MY_TABLE.value as value
+--   )
+--   DIMENSIONS (
 --     MY_TABLE.name as name,
 --     MY_TABLE.category as category,
---     MY_TABLE.value as value,
 --     MY_TABLE.created_at as created_at
 --   )
 --   METRICS (
@@ -88,6 +93,8 @@ GRANT SELECT ON ALL TABLES IN SCHEMA core TO APPLICATION ROLE app_user;
 -- =============================================================================
 -- 5. Cortex Agent (UPDATE INSTRUCTIONS AND TOOLS)
 -- =============================================================================
+-- The spec is a $$ literal, so replace REPLACE_WITH_YOUR_WAREHOUSE and the
+-- REPLACE_DB.REPLACE_SCHEMA.YOUR_QLIK_MCP_SERVER placeholder by hand.
 
 CREATE OR REPLACE AGENT core.my_agent
     FROM SPECIFICATION $$
@@ -131,7 +138,7 @@ $$;
 GRANT USAGE ON AGENT core.my_agent TO APPLICATION ROLE app_user;
 
 -- =============================================================================
--- 6. Agent Profile (for CoWork visibility)
+-- 6. Agent Profile (display name and avatar in Snowflake Intelligence)
 -- =============================================================================
 
 ALTER AGENT core.my_agent SET

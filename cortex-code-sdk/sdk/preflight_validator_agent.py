@@ -74,12 +74,16 @@ class PreFlightReport(BaseModel):
     remediations: list[RemediationAction]
 
 # ---------------------------------------------------------------------------
-# Audit hook — logs every SQL the agent executes
+# Audit hook — records every SQL statement before the agent runs it.
+# Each call is printed to stderr immediately; the full log is printed at the end.
 # ---------------------------------------------------------------------------
 
 SQL_AUDIT_LOG: list[dict] = []
 
 async def audit_sql_hook(input_data, tool_use_id, context):
+    # Only SQL tool calls are logged. NOTE: the bundled SDK docs name this tool
+    # "SQL" (as in allowed_tools); check which name your SDK version reports,
+    # otherwise the audit log stays empty.
     if input_data.get("tool_name") == "sql_execute":
         sql = input_data.get("tool_input", {}).get("sql", "")
         entry = {

@@ -101,8 +101,10 @@ def build_diagnose_prompt(database: str, schema: str) -> str:
     return f"""\
 For each table that violates the SLA, diagnose why it is stale:
 
-1. Check SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY for tasks targeting
-   {database}.{schema}. Look at the most recent runs.
+1. Find the most recent runs of tasks targeting {database}.{schema}. Use the
+   real-time TABLE({database}.INFORMATION_SCHEMA.TASK_HISTORY(...)) table
+   function for recent runs; SNOWFLAKE.ACCOUNT_USAGE.TASK_HISTORY lags by up
+   to ~45 minutes and is only for older history.
 2. Check if any tasks are suspended (SHOW TASKS IN SCHEMA {database}.{schema}).
 3. If a task failed, include the error message.
 4. If no task exists for a stale table, note "no_task" as the cause.
@@ -143,6 +145,10 @@ async def run(database: str, schema: str, sla_hours: float, tag: str) -> None:
         # --- Turn 2: Diagnose root causes and produce structured output ---
         print("=== Turn 2: Diagnosing SLA violations ===\n")
 
+        # Turn 2 needs structured output, but options are fixed when the client is
+        # created and the SDK has no public setter, so this swaps the private
+        # _options attribute. If the running session ignores it, the result has no
+        # structured_output and the script prints "No structured output returned."
         client._options = CortexCodeAgentOptions(
             cwd=".",
             allowed_tools=["SQL"],

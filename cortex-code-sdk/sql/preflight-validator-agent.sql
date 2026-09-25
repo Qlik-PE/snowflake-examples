@@ -2,7 +2,7 @@
 -- Pipeline Pre-Flight Validator Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/preflight_validator_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/preflight_validator_agent.py.
 --
 -- Before a Qlik Declarative Pipeline runs, this agent checks the Snowflake
 -- side: target tables exist, the service account has required grants,
@@ -90,6 +90,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

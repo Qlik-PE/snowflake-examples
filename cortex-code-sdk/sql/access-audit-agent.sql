@@ -2,7 +2,7 @@
 -- Access Audit / Least-Privilege Agent (Cortex Agent + REST API)
 -- =============================================================================
 --
--- SQL equivalent of coco-agent-sdk/access_audit_agent.py.
+-- SQL equivalent of cortex-code-sdk/sdk/access_audit_agent.py.
 --
 -- Audits Snowflake access patterns for Qlik service accounts. Identifies
 -- over-privileged roles, unused grants, and access anomalies. Returns a
@@ -53,8 +53,14 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
       3. Check for any ACCOUNTADMIN or SECURITYADMIN grants in the chain — flag
          these as critical anomalies.
       4. Count total grants by object type (TABLE, SCHEMA, DATABASE, WAREHOUSE).
-      5. Query SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY for the audit period to
-         find which objects were actually accessed by the role.
+      5. Find which objects were actually accessed by the role during the audit
+         period. ACCESS_HISTORY has no role column: join
+         SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY to SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+         on QUERY_ID, filter on QUERY_HISTORY.ROLE_NAME, and FLATTEN
+         BASE_OBJECTS_ACCESSED (and OBJECTS_MODIFIED for write grants) to get
+         objectName values. Privileges the role passes to parent roles are used
+         under those roles' names, so include parent roles or mark the result
+         as uncertain instead of "unused".
       6. Compare accessed objects against the grant inventory. Any grant whose
          object was NOT accessed is "unused".
       7. Look for cross-schema or cross-database access patterns that suggest
@@ -90,6 +96,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- =============================================================================
 -- Step 2: Call the agent
 -- =============================================================================
+-- NOTE: The examples below call the agent at its default location
+-- (CORTEX_CODE.PUBLIC). Adjust them if you changed TARGET_DATABASE/SCHEMA.
 
 -- Option A: SQL via DATA_AGENT_RUN
 --

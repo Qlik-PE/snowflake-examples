@@ -28,6 +28,7 @@ Official Qlik MCP tool names used by this skill:
 - `qlik_create_sheet` — Create a new sheet
 - `qlik_add_chart` — Add a chart to a sheet
 - `qlik_add_filter` — Add a filter panel to a sheet
+- `qlik_create_glossary_term_links` — Link glossary terms to app master items
 
 Use the actual prefixed names in all tool calls. If a call returns "not found", re-check your tools list for the correct prefixed name.
 
@@ -105,7 +106,7 @@ For each row, extract: `{fromTable, fkColumn, toTable, pkColumn}`.
 
 If the README does not contain a Relationships table or is empty, fall back to deriving relationships from column names:
 - Key columns end in `_KEY`, `_ID`, `_CODE`, or `_SK`.
-- Strip the table-specific prefix (single letter + `_`) to find the base key name.
+- Strip the table-specific prefix (the letters before the first `_`, e.g. `N_`, `PS_`) to find the base key name.
 - The table named after the entity owns the PK (e.g. `N_NATIONKEY` is PK in `NATION`).
 - Other tables with the same base key have FK references.
 
@@ -130,16 +131,35 @@ Present to the user:
 
 ### Step 2: Build and set the load script
 
-**Key field renaming strategy**: Qlik's associative engine links tables automatically when they share identically named fields. To establish relationships, rename foreign key columns in each table's LOAD statement so that:
-- The **primary key column** in its owning table keeps a clean canonical name (e.g. `NATIONKEY`).
-- **Foreign key columns** in referencing tables are renamed (via `AS`) to the same canonical name (e.g. `S_NATIONKEY AS NATIONKEY`).
-- This creates automatic associations in Qlik without explicit JOIN statements.
+**Key field linking strategy**: Qlik's associative engine links two tables automatically when they share an identically named field. Two things must never happen, because Qlik then builds **synthetic keys** (tables sharing more than one field) or **circular references** (more than one path between two tables) and silently loosens associations:
+- two tables sharing more than one field, and
+- the tables forming a loop.
 
-Build the `keyRenameMap` from the relationships discovered in Step 1:
-- For each relationship, the canonical key name is the base key (e.g. `NATIONKEY` from `N_NATIONKEY`).
-- In the primary table: rename `<PREFIX>_<KEY>` → `<KEY>` (e.g. `N_NATIONKEY` AS `NATIONKEY` in NATION).
-- In foreign tables: rename `<PREFIX>_<KEY>` → `<KEY>` (e.g. `S_NATIONKEY` AS `NATIONKEY` in SUPPLIER).
-- Non-key columns keep their original names.
+Build the link plan from `relationships[]` (Step 1) as follows:
+
+1. **Group relationships** by `(fromTable, toTable)`. A group with more than one column pair is a **composite key** (e.g. `LINEITEM(L_PARTKEY, L_SUPPKEY) → PARTSUPP(PS_PARTKEY, PS_SUPPKEY)`).
+
+2. **Choose which relationships become links (no loops).** Treat tables as nodes and relationship groups as edges. Add edges one at a time and **skip any edge whose two tables are already connected** (a union-find / spanning-tree check). Add edges in this order:
+   - composite-key edges first (they are the most specific);
+   - then walk outward, breadth-first, from the table with the most rows (the fact table, e.g. `LINEITEM`): at each step, consider the edges that touch tables already linked;
+   - when several edges are at the same distance, follow the order of the Relationships table.
+
+   Also **skip any single-column edge whose FK column is already part of a composite key in the same table.** It would create a second shared field between tables that are already linked through the composite key.
+
+3. **Name the link fields.**
+   - Single-column link: the canonical name is the base key, e.g. `NATIONKEY`. Rename the PK in the parent table (`"N_NATIONKEY" AS "NATIONKEY"`) and the FK in the child table (`"C_NATIONKEY" AS "NATIONKEY"`).
+   - Composite link: create **one** combined key field in both tables, named `<PARENT>_KEY`, e.g. `"L_PARTKEY" & '|' & "L_SUPPKEY" AS "PARTSUPP_KEY"` in LINEITEM and `"PS_PARTKEY" & '|' & "PS_SUPPKEY" AS "PARTSUPP_KEY"` in PARTSUPP. Keep the component columns under their **original** names so they don't create extra links.
+   - If the same canonical name would be used by two different links (e.g. `NATIONKEY` for both CUSTOMER→NATION and SUPPLIER→NATION), only the first one kept in step 2 may use it.
+
+4. **Handle skipped relationships.** A skipped edge keeps its FK column under its **original** name, so no association forms. If the skipped edge's parent is a small lookup table (for example `NATION` for suppliers), you may add a **role-playing copy** of that table instead: load it again under a new name, with every field prefixed (e.g. `[SUPPLIER_NATION]: LOAD "N_NATIONKEY" AS "SUPPLIER_NATIONKEY", "N_NAME" AS "SUPPLIER_NATION_NAME" ...`), and rename the child's FK to match (`"S_NATIONKEY" AS "SUPPLIER_NATIONKEY"`). Make sure the copy does not link onward (drop or prefix its own FKs).
+
+5. Store the result as `keyRenameMap` (`{tableName, originalColumn}` → `renamedColumn`), `compositeKeys` (`{tableName, keyName, columns[]}`) and `skippedRelationships` (reported to the user in Step 7).
+
+Worked example (TPC-H, with the Relationships table in the order produced by `create_data_product_from_sv`):
+- **Linked:** LINEITEM–PARTSUPP (`PARTSUPP_KEY`, composite), LINEITEM–ORDERS (`ORDERKEY`), PARTSUPP–PART (`PARTKEY`), PARTSUPP–SUPPLIER (`SUPPKEY`), ORDERS–CUSTOMER (`CUSTKEY`), CUSTOMER–NATION (`NATIONKEY`), NATION–REGION (`REGIONKEY`).
+- **Skipped:**
+  - LINEITEM→PART and LINEITEM→SUPPLIER, because `L_PARTKEY` and `L_SUPPKEY` are already part of the composite `PARTSUPP_KEY`. Both tables are still reachable through PARTSUPP.
+  - SUPPLIER→NATION, because it would close the loop LINEITEM–PARTSUPP–SUPPLIER–NATION–CUSTOMER–ORDERS–LINEITEM. A `SUPPLIER_NATION` role-playing copy covers supplier geography.
 
 1. For each dataset, generate a Qlik load script block. **Include glossary-sourced comments** and **apply key renames**:
 
@@ -166,9 +186,10 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
 
    Renaming rules:
    - If a column is in the `keyRenameMap` for this table, use `"<original>" AS "<canonical>"` in the LOAD section.
-   - If a column is NOT a key, keep it as-is: `"<column>"`.
+   - For each entry in `compositeKeys` for this table, add the combined field, e.g. `"L_PARTKEY" & '|' & "L_SUPPKEY" AS "PARTSUPP_KEY",`, and keep the component columns as-is.
+   - Every other column keeps its original name: `"<column>"`. This includes the FKs of skipped relationships.
    - The SQL SELECT section always uses the **original** column names (no rename — that's the physical table).
-   - Add a comment suffix for renamed keys: `// PK - links SUPPLIER, CUSTOMER` or `// FK → NATION`.
+   - Add a comment suffix for link fields, e.g. `// PK - links CUSTOMER` or `// FK → NATION`. For a skipped relationship, add `// not linked (would create a loop)`.
 
    Comment matching rules:
    - For each column, first check if a glossary term exists whose `name` matches the column name (case-insensitive). If yes, use the glossary term's `description` as the inline comment.
@@ -212,7 +233,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
    - `<connectionName>` is the connection name selected by the user in Step 0.
    - Do NOT use bare connection names without the space prefix — they will fail if the app is in a different space.
    - Do NOT use `lib://DataFiles/`, QRI paths, or any other format. Only `LIB CONNECT TO '<space>:<connection>';`.
-   - Example: `LIB CONNECT TO 'Snowflake:Snowflake_AYFRZOA-QLIK.snowflakecomputing.com';`
+   - Example: `LIB CONNECT TO 'Snowflake:Snowflake_<orgname>-<account>.snowflakecomputing.com';` (space `Snowflake`, connection `Snowflake_<orgname>-<account>.snowflakecomputing.com`)
 
 3. Concatenate all blocks into a single `fullScript` string separated by blank lines.
 
@@ -258,7 +279,7 @@ Build the `keyRenameMap` from the relationships discovered in Step 1:
    - From the dataset columns collected in Step 1:
      - Columns with string/categorical types (VARCHAR, CHAR) and low implied cardinality (names ending in `_TYPE`, `_STATUS`, `_CATEGORY`, `_CODE`, `_NAME`, `_REGION`, `_SEGMENT`) → **dimensions**.
      - Columns with numeric types (NUMBER, FLOAT, DECIMAL, INTEGER) and names suggesting measures (`AMOUNT`, `PRICE`, `QTY`, `QUANTITY`, `REVENUE`, `COST`, `TOTAL`, `COUNT`, `BALANCE`) → **measures** (default aggregation: `Sum()`).
-     - Date/timestamp columns → **dimensions** (with `=$(Year([field]))` and `=$(Month([field]))` derived dimensions).
+     - Date/timestamp columns → **dimensions**, plus derived `Year` and `Month` dimensions using the calculated expressions `=Year([field])` and `=Month([field])`. Do NOT wrap these in `$(...)`: dollar-sign expansion is evaluated once, which would make the dimension a constant.
      - Key columns (`*_ID`, `*_KEY`) → skip (not useful as master items).
 
 3. **Create master dimensions**:
@@ -350,7 +371,7 @@ Present:
 - **Open your app**: `https://<tenant>/sense/app/<appId>` (use the Qlik tenant from the data connection URL)
 - **Data Product**: source name, ID
 - **Connection**: name used in load script
-- **Load Script**: number of tables, whether glossary comments were included
+- **Load Script**: number of tables, whether glossary comments were included, links created, and any `skippedRelationships` (with the reason and any role-playing copy added)
 - **Reload Status**: success or failure details
 - **Glossary**: linked (name, ID, term count) or not found
 - **Master Dimensions**: count created, list with names
@@ -366,6 +387,5 @@ If rollback is needed at any point:
 
 1. List all entries in `created_artifacts` (in creation order).
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
-3. If user confirms, delete in **reverse** order:
-   - App: use `qlik_search` to find the app, then delete it via the Qlik API. Deleting the app removes all sheets, master items, and the load script.
-4. Confirm deletion.
+3. No tool available to this agent deletes a Qlik app. Report the app ID and URL (`https://<tenant>/sense/app/<appId>`) and ask the user to delete it in the Qlik Cloud hub. Deleting the app removes all its sheets, master items and the load script.
+4. Glossary terms and links created by this skill belong to the data product's glossary; list any that were created so the user can review them.

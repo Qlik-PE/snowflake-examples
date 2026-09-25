@@ -4,8 +4,9 @@
 # The actual Semantic View is created inline in setup_script.sql using
 # the CREATE SEMANTIC VIEW DDL syntax.
 #
-# This file serves as the human-readable specification that the Native App's
-# semantic view implements.
+# This is the human-readable specification of the model. NOTE: it is ahead of
+# the installed semantic view: net_revenue_retention and churn_rate are defined
+# here but not (yet) in setup_script.sql.
 
 name: saas_metrics
 description: >

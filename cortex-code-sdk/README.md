@@ -1,40 +1,30 @@
-# Cortex Code SDK
+# Cortex Code SDK Examples
 
-## Why the Cortex Code Agent SDK for Qlik Solutions
+Agentic AI examples for Snowflake + Qlik operations. Each use case is implemented **twice**:
 
-Qlik integration workflows — reloads, CDC pipelines, data product governance, cost attribution — span both Qlik Cloud and Snowflake. Investigating failures, validating pipelines, or auditing access requires querying Snowflake metadata (QUERY_HISTORY, TASK_HISTORY, ACCESS_HISTORY, INFORMATION_SCHEMA) and acting on the results. The [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) lets you automate that cross-system work as programmable AI agents that Qlik Automate, Qlik Application Automation, or any Python/TypeScript backend can trigger.
+- as a **Python agent** built on the [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) (runs on your machine or server), and
+- as a **SQL `CREATE AGENT`** using the server-side Coding Agent (`code_toolset_all`). You call it with `DATA_AGENT_RUN()` or the Cortex Agents REST API.
 
-**What it solves for Qlik teams:**
+Choose whichever fits your architecture. The two versions follow the same workflow.
 
-- **Pipeline failure triage without context-switching.** When a Qlik reload or Replicate task fails, an SDK agent investigates the Snowflake side autonomously — querying QUERY_HISTORY, WAREHOUSE_EVENTS, and task metadata — and returns a structured root-cause report with remediation SQL. No manual Snowsight investigation needed.
-- **Cost attribution back to Qlik workloads.** Attribute Snowflake credit consumption to specific Qlik-originated queries, warehouses, and users. Surface the most expensive operations and produce optimization recommendations that Qlik operations teams can act on.
-- **Semantic view drift detection.** When Qlik Data Products evolve, an agent compares the DP definition against its Snowflake Semantic View, detects column drift and type mismatches, and generates reconciliation DDL — keeping governed metadata in sync.
-- **Pre-flight validation before pipeline runs.** Before a Qlik Declarative Pipeline executes, an agent checks that target tables exist, the service role has required grants, warehouses are running, and dynamic tables are healthy. Returns a GO/NO_GO verdict with remediation SQL for every issue.
-- **Least-privilege auditing for Qlik service accounts.** Cross-references role grants against actual ACCESS_HISTORY usage to find over-privileged roles and unused permissions, then produces REVOKE/GRANT SQL with risk ratings.
+## Why Agents for Qlik + Snowflake Operations
 
-**Why the SDK over raw SQL or scripts:**
+Qlik workloads (reloads, CDC pipelines, data products, cost reviews) span Qlik Cloud and Snowflake. When something goes wrong, the answer usually sits in Snowflake metadata: `QUERY_HISTORY`, `TASK_HISTORY`, `ACCESS_HISTORY` and `INFORMATION_SCHEMA`. These agents query that metadata, reason over the results, and return a structured report with remediation SQL. Qlik Automate or any backend can trigger them.
 
-- **Built-in Snowflake tools.** Execute SQL, read files, run shell commands, search codebases — no tool implementation needed. The agent queries ACCOUNT_USAGE views, interprets results, and reasons over them autonomously.
-- **Structured output for Qlik consumption.** Force agents to return JSON matching a Pydantic schema, ready for ingestion by Qlik Automate webhooks, the Qlik REST API, or downstream Qlik analytics apps.
-- **Multi-turn investigation.** Complex diagnostics (e.g., inventory grants in turn 1, cross-reference with usage in turn 2) happen within a single session context — the agent remembers what it found.
-- **Audit hooks.** `PreToolUse` hooks log every SQL statement the agent executes, providing a full audit trail for compliance-sensitive Qlik integration workflows.
-- **MCP connectivity.** Connect agents to Qlik Cloud MCP servers alongside Snowflake tools, enabling agents that reason across both platforms in a single session.
-
-**Resources:**
-- [SDK documentation](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) | [Quickstart](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/quickstart) | [Python reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/python-reference) | [TypeScript reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/typescript-reference)
-- [Snowflake CoCo product page](https://www.snowflake.com/en/product/features/cortex-code/)
-- [Coding Agent (code_toolset_all)](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-coding-agent) — the server-side equivalent
-- Local copy of the SDK docs: [cortex-code-agent-sdk-docs.md](cortex-code-agent-sdk-docs.md)
-
----
-
-Agentic AI examples for Snowflake + Qlik integrations. Every use case is implemented twice — once as a Python SDK agent and once as a SQL `CREATE AGENT` object — so you can choose the approach that fits your architecture.
+| Problem | What the agent does |
+|---|---|
+| A Qlik reload or Replicate task failed | Finds the failing Snowflake queries, identifies the root cause, and returns remediation SQL |
+| Snowflake spend from Qlik workloads is too high | Attributes credits by warehouse and query, then recommends resizing or rescheduling |
+| A Qlik Data Product and its Semantic View have drifted apart | Diffs columns and types, runs verified queries, and generates reconciliation DDL |
+| A pipeline is about to run | Checks objects, grants, warehouse state and dynamic-table health, and returns GO / NO_GO |
+| A Qlik service role is over-privileged | Compares grants with actual `ACCESS_HISTORY` and returns REVOKE/GRANT SQL with a risk rating for each |
 
 ## Directory Layout
 
 ```
 cortex-code-sdk/
-├── sdk/                # Python agents using the Cortex Code Agent SDK
+├── sdk/                                   # Python agents (Cortex Code Agent SDK)
+│   ├── README.md                          #   setup, per-agent usage and output contracts
 │   ├── rca_agent.py
 │   ├── workload_cost_agent.py
 │   ├── semantic_drift_agent.py
@@ -42,8 +32,8 @@ cortex-code-sdk/
 │   ├── sql_optimizer_agent.py
 │   ├── data_freshness_agent.py
 │   ├── access_audit_agent.py
-│   └── README.md       # SDK setup, architecture, feature coverage matrix
-├── sql/                # SQL CREATE AGENT equivalents (code_toolset_all)
+│   └── tpch_cost_optimize_example.py      #   end-to-end: cost → optimize → cost
+├── sql/                                   # CREATE AGENT equivalents (code_toolset_all)
 │   ├── rca-agent.sql
 │   ├── workload-cost-agent.sql
 │   ├── semantic-drift-agent.sql
@@ -51,57 +41,45 @@ cortex-code-sdk/
 │   ├── sql-optimizer-agent.sql
 │   ├── data-freshness-agent.sql
 │   ├── access-audit-agent.sql
-│   └── doc-intelligence-agent.sql
+│   └── doc-intelligence-agent.sql         #   SQL only
+├── tpch-cost-optimization-walkthrough.md
+└── cortex-code-agent-sdk-docs.md          # local copy of the SDK docs
 ```
 
 ## Use Cases
 
-| Use case | SDK (Python) | SQL (CREATE AGENT) |
+| Use case | Python (SDK) | SQL (CREATE AGENT) |
 |---|---|---|
-| **Failure root-cause analysis** — investigate Snowflake-side failures when a Qlik reload or CDC pipeline errors out | [rca_agent.py](sdk/rca_agent.py) | [rca-agent.sql](sql/rca-agent.sql) |
-| **Workload cost attribution** — attribute credit consumption to Qlik-originated workloads, recommend optimizations | [workload_cost_agent.py](sdk/workload_cost_agent.py) | [workload-cost-agent.sql](sql/workload-cost-agent.sql) |
-| **Semantic view drift** — compare Qlik Data Product definitions against Snowflake semantic views, produce reconciliation DDL | [semantic_drift_agent.py](sdk/semantic_drift_agent.py) | [semantic-drift-agent.sql](sql/semantic-drift-agent.sql) |
-| **Pipeline pre-flight validation** — check object existence, grants, warehouse state, and dynamic table health before a pipeline runs | [preflight_validator_agent.py](sdk/preflight_validator_agent.py) | [preflight-validator-agent.sql](sql/preflight-validator-agent.sql) |
-| **SQL optimization** — analyze and rewrite SQL queries following Snowflake best practices | [sql_optimizer_agent.py](sdk/sql_optimizer_agent.py) | [sql-optimizer-agent.sql](sql/sql-optimizer-agent.sql) |
-| **Data freshness SLA monitoring** — detect stale tables, diagnose root causes via TASK_HISTORY | [data_freshness_agent.py](sdk/data_freshness_agent.py) | [data-freshness-agent.sql](sql/data-freshness-agent.sql) |
-| **Access audit / least-privilege** — identify over-privileged roles, unused grants, and access anomalies | [access_audit_agent.py](sdk/access_audit_agent.py) | [access-audit-agent.sql](sql/access-audit-agent.sql) |
-| **Document intelligence** — parse, extract, classify, and answer questions about documents using Cortex AI functions | — | [doc-intelligence-agent.sql](sql/doc-intelligence-agent.sql) |
+| **Failure root-cause analysis**: investigate Snowflake-side failures behind a failed Qlik reload or CDC task | [rca_agent.py](sdk/rca_agent.py) | [rca-agent.sql](sql/rca-agent.sql) |
+| **Workload cost attribution**: attribute credits to Qlik workloads and recommend optimizations | [workload_cost_agent.py](sdk/workload_cost_agent.py) | [workload-cost-agent.sql](sql/workload-cost-agent.sql) |
+| **Semantic view drift**: compare a Qlik Data Product with its Semantic View and produce reconciliation DDL | [semantic_drift_agent.py](sdk/semantic_drift_agent.py) | [semantic-drift-agent.sql](sql/semantic-drift-agent.sql) |
+| **Pipeline pre-flight validation**: check objects, grants, warehouse state and dynamic tables before a run | [preflight_validator_agent.py](sdk/preflight_validator_agent.py) | [preflight-validator-agent.sql](sql/preflight-validator-agent.sql) |
+| **SQL optimization**: reformat and rewrite a query following Snowflake best practices | [sql_optimizer_agent.py](sdk/sql_optimizer_agent.py) | [sql-optimizer-agent.sql](sql/sql-optimizer-agent.sql) |
+| **Data freshness SLA monitoring**: find stale tables and diagnose why with `TASK_HISTORY` | [data_freshness_agent.py](sdk/data_freshness_agent.py) | [data-freshness-agent.sql](sql/data-freshness-agent.sql) |
+| **Access audit / least privilege**: find over-privileged roles, unused grants and anomalies | [access_audit_agent.py](sdk/access_audit_agent.py) | [access-audit-agent.sql](sql/access-audit-agent.sql) |
+| **Document intelligence**: parse, extract, classify and summarize staged documents with Cortex AI functions | — | [doc-intelligence-agent.sql](sql/doc-intelligence-agent.sql) |
 
-### End-to-end walkthrough
+**End-to-end walkthrough:** [TPCH SF100 Cost → Optimize → Cost](tpch-cost-optimization-walkthrough.md) chains the Workload Cost and SQL Optimizer agents against a 600M-row dataset. It runs a deliberately inefficient query, measures its cost, optimizes it, and measures again. Script: [tpch_cost_optimize_example.py](sdk/tpch_cost_optimize_example.py).
 
-| Example | Description |
-|---|---|
-| [TPCH SF100 Cost → Optimize → Cost](tpch-cost-optimization-walkthrough.md) | Chains the Workload Cost and SQL Optimizer agents against a 600M-row dataset. Executes a deliberately anti-pattern-heavy query, measures cost, optimizes with the SDK, re-measures, and compares. Script: [tpch_cost_optimize_example.py](sdk/tpch_cost_optimize_example.py) |
+## Python SDK vs. SQL Agent
 
-## SDK (Python) vs Cortex Agent (SQL + REST API)
-
-| | SDK (Python) | Cortex Agent (SQL + REST API) |
+| | Python (SDK) | SQL agent (`CREATE AGENT` + REST) |
 |---|---|---|
-| **Runtime** | Python process on your machine or server | Snowflake-managed; no external process |
-| **Invocation** | `query()` / `CortexCodeSDKClient` in Python | `DATA_AGENT_RUN()` SQL function or `POST /api/v2/cortex/agent:run` |
-| **Deployment** | `pip install cortex-code-agent-sdk` + Cortex Code CLI | `CREATE AGENT` DDL; nothing to install |
-| **Multi-turn** | Native via `CortexCodeSDKClient` context | Pass `thread_id` / `parent_message_id` across REST calls |
-| **Hooks** | `PreToolUse`, `PostToolUse`, `Stop` callbacks in Python | Not available server-side; use event tables or query history for audit |
-| **Structured output** | `output_format` with JSON Schema; validated client-side with Pydantic | Not available in the agent spec; parse the response JSON |
-| **Tool approval** | `allowed_tools` auto-approves; `canUseTool` callback for custom logic | `permission_policy: always_allow` or interactive approval via REST |
-| **Scheduling** | Cron, Qlik Automate, or any scheduler that can run Python | `CREATE TASK` with `DATA_AGENT_RUN()`, or Cortex Code `/automation` |
-| **Best for** | Complex orchestration, client-side validation, hook-driven audit logging | Headless/server-side execution, SQL-native teams, scheduled tasks, REST integrations |
+| **Runs** | In a Python process you host | Inside Snowflake; nothing to host |
+| **Install** | `pip install cortex-code-agent-sdk pydantic` + Cortex Code CLI | Nothing. Run the DDL once |
+| **Invoke** | `query()` or `CortexCodeSDKClient` | `SNOWFLAKE.CORTEX.DATA_AGENT_RUN()` or `POST …/agents/<name>:run` |
+| **Multi-turn** | Native, through the client session | Pass `thread_id` / `parent_message_id` between calls |
+| **Structured output** | Enforced with `output_format` (JSON Schema) and validated with Pydantic | Guided by `instructions.response` only; the caller parses the text |
+| **Audit hooks** | `PreToolUse` / `PostToolUse` callbacks | Not available; use `QUERY_HISTORY` or an event table |
+| **Tool approval** | `allowed_tools` or a custom callback | `permission_policy` (these examples use `always_allow`) |
+| **Scheduling** | cron, Qlik Automate + a backend, any scheduler | `CREATE TASK` calling `DATA_AGENT_RUN()`, or Qlik Automate calling REST directly |
+| **Best for** | Client-side validation, audit logging, custom orchestration | Zero-infrastructure, SQL-native, REST-driven integrations |
 
-### Key Differences
+> **Security:** the SQL agents use `code_toolset_all` with `permission_policy: always_allow`. They can run any SQL the caller's role allows, without asking first. Run them under a role that has only the privileges the use case needs, especially the access-audit and pre-flight agents, which generate `REVOKE`/`GRANT`/`ALTER` statements.
 
-**Hooks and audit logging.** The SDK agents (`preflight_validator_agent.py`, `access_audit_agent.py`) use a `PreToolUse` hook to log every SQL statement. The SQL agents do not have this server-side. For audit logging, query `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` filtered by the agent's session, or configure an event table.
+## Calling the SQL Agents over REST
 
-**Structured output.** SDK agents enforce a JSON Schema via `output_format` and validate with Pydantic. The SQL agents receive the full response as JSON from `DATA_AGENT_RUN()` — the caller parses it. The agent's `instructions.response` guides formatting but does not enforce a schema.
-
-**Multi-turn conversations.** SDK agents using `CortexCodeSDKClient` maintain context across turns natively. SQL agents achieve the same by passing `thread_id` and `parent_message_id` in consecutive calls.
-
-**When to use which.** Use the SDK when you need client-side control: hooks, Pydantic validation, custom orchestration, or integration into a Python app. Use the SQL agent for zero-infrastructure deployment callable from Snowflake Tasks, stored procedures, Qlik Automate REST actions, or any HTTP client.
-
-## Calling Agents via the REST API
-
-Every SQL agent file includes commented `curl` examples. Replace `$SNOWFLAKE_ACCOUNT_BASE_URL` with your account URL (`https://<orgname>-<account_name>.snowflakecomputing.com`) and `$PAT` with a [programmatic access token](https://docs.snowflake.com/en/user-guide/admin-user-management#programmatic-access-tokens).
-
-**Single-turn (streaming SSE):**
+Every SQL file includes commented `curl` examples. Set `$SNOWFLAKE_ACCOUNT_BASE_URL` to `https://<orgname>-<account_name>.snowflakecomputing.com`, and `$PAT` to a [programmatic access token](https://docs.snowflake.com/en/user-guide/admin-user-management#programmatic-access-tokens).
 
 ```bash
 curl -X POST "$SNOWFLAKE_ACCOUNT_BASE_URL/api/v2/databases/CORTEX_CODE/schemas/PUBLIC/agents/RCA_AGENT:run" \
@@ -110,26 +88,23 @@ curl -X POST "$SNOWFLAKE_ACCOUNT_BASE_URL/api/v2/databases/CORTEX_CODE/schemas/P
   --header "Authorization: Bearer $PAT" \
   --data '{
     "messages": [
-      {
-        "role": "user",
-        "content": [{ "type": "text", "text": "Investigate failures on warehouse QLIK_WH in the last 30 minutes." }]
-      }
+      { "role": "user",
+        "content": [{ "type": "text", "text": "Investigate failures on warehouse QLIK_WH in the last 30 minutes." }] }
     ]
   }'
 ```
 
-**Non-streaming JSON:** Set `"stream": false` and `Accept: application/json`.
+- **Single JSON response instead of a stream:** set `"stream": false` and `Accept: application/json`.
+- **Multi-turn:** send `"thread_id": 0, "parent_message_id": 0` on the first call, then pass the returned `thread_id` and assistant message ID on the next call.
+- **Long runs:** set `"background": true` for tasks that may exceed the 15-minute REST timeout.
 
-**Multi-turn with threads:** Pass `"thread_id": 0, "parent_message_id": 0` on the first call. Use the `thread_id` and `assistant_message_id` from the response to continue.
-
-**Background runs:** Set `"background": true` for tasks exceeding the 15-minute REST timeout.
-
-For the full API reference, see [Cortex Agents Run API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run).
+The examples create agents in `CORTEX_CODE.PUBLIC` by default. Change `TARGET_DATABASE` / `TARGET_SCHEMA` at the top of each SQL file, and update the call examples to match.
 
 ## References
 
-- [Cortex Code Agent SDK documentation](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) (also saved locally in [cortex-code-agent-sdk-docs.md](cortex-code-agent-sdk-docs.md))
-- [Coding Agent (code_toolset_all)](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-coding-agent)
-- [DATA_AGENT_RUN SQL function](https://docs.snowflake.com/en/sql-reference/functions/data_agent_run-snowflake-cortex)
+- [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk): [Quickstart](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/quickstart), [Python reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/python-reference), [TypeScript reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/typescript-reference), and a [local copy](cortex-code-agent-sdk-docs.md) of the docs
+- [Coding Agent (`code_toolset_all`)](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-coding-agent), the server-side equivalent
+- [`DATA_AGENT_RUN`](https://docs.snowflake.com/en/sql-reference/functions/data_agent_run-snowflake-cortex)
 - [Cortex Agents Run REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run)
-- [SDK setup and feature coverage](sdk/README.md)
+- [Cortex Code product page](https://www.snowflake.com/en/product/features/cortex-code/)
+- [SDK setup, per-agent usage and output contracts](sdk/README.md)

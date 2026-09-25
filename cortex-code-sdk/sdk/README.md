@@ -1,17 +1,21 @@
 # Cortex Code Agent SDK — Qlik Integration Prototypes
 
-Prototypes exploring how Qlik agents can delegate Snowflake-platform work to the
-[Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk).
-The SDK provides a sandboxed agent session that can execute SQL, run Python, read/write
-files, and reason across multiple steps against a customer's Snowflake account.
+Python prototypes that show how a Qlik integration can hand Snowflake-platform
+work to the [Cortex Code Agent SDK](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk).
+The SDK runs a sandboxed agent session that can execute SQL, run Python,
+read and write files, and reason over several steps against your Snowflake
+account. Each script returns a Pydantic-validated JSON report.
+
+For the SQL (`CREATE AGENT`) versions of the same agents, and a comparison of
+the two approaches, see the [parent README](../README.md).
 
 ## Setup
 
 ```bash
-cd coco-agent-sdk
+cd cortex-code-sdk/sdk
 python3 -m venv .venv
 source .venv/bin/activate
-pip install cortex-code-agent-sdk
+pip install cortex-code-agent-sdk pydantic
 ```
 
 The SDK requires the [Cortex Code CLI](https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-cli)
@@ -26,7 +30,14 @@ user = "myuser"
 authenticator = "externalbrowser"
 ```
 
-The SDK uses the default connection unless you override it in code.
+The SDK uses the default connection unless you override it in code. The role
+behind that connection needs read access to `SNOWFLAKE.ACCOUNT_USAGE` for most
+of these agents.
+
+> **Latency:** `SNOWFLAKE.ACCOUNT_USAGE` views lag real time, by up to about
+> 45 minutes for `QUERY_HISTORY` and `TASK_HISTORY`. The RCA, freshness and
+> TPCH cost prompts therefore tell the agent to use the real-time
+> `INFORMATION_SCHEMA` table functions for recent activity.
 
 ## Prototypes
 
@@ -36,8 +47,7 @@ When a Qlik reload or Replicate task fails, this script launches a CoCo agent
 session that investigates the Snowflake side and returns a structured JSON report
 with root cause and remediation SQL.
 
-This maps to the first use case from the integration proposal: *"Cross-system
-triage arrives solved instead of started."*
+Goal: *"Cross-system triage arrives solved instead of started."*
 
 #### How it works
 
@@ -131,7 +141,7 @@ Qlik-originated workloads. Returns a structured cost breakdown by warehouse,
 identifies the most expensive queries, and provides optimization recommendations
 with estimated savings.
 
-Maps to: *"Qlik makes your Snowflake cheaper, with evidence."*
+Goal: *"Qlik makes your Snowflake cheaper, with evidence."*
 
 #### SDK features used
 
@@ -195,7 +205,7 @@ Multi-turn agent that compares a Qlik Data Product definition against a Snowflak
 semantic view. Detects drift (added/removed columns, type mismatches, broken
 verified queries) and returns a structured diff with reconciliation DDL.
 
-Maps to: *"Qlik data products natively consumable by Cortex Agents."*
+Goal: *"Qlik data products natively consumable by Cortex Agents."*
 
 #### SDK features used
 
@@ -264,7 +274,7 @@ target objects exist, the service role has required grants, warehouses are runni
 and dynamic tables are healthy. Returns a structured GO / NO_GO report with
 remediation SQL.
 
-Maps to: *"Review becomes approval rather than debugging."*
+Goal: *"Review becomes approval rather than debugging."*
 
 #### SDK features used
 
@@ -332,8 +342,9 @@ python preflight_validator_agent.py \
 }
 ```
 
-The pre-flight agent also prints an SQL audit log to stderr, showing every query
-it executed during the check — useful for compliance and debugging.
+The pre-flight agent also records every SQL statement it runs through a
+`PreToolUse` hook. It prints an `[AUDIT]` line to stderr for each statement as it
+runs, and the full audit log (JSON) at the end.
 
 ---
 
@@ -345,7 +356,7 @@ query plan (via EXPLAIN when a warehouse is provided), checks for common
 anti-patterns, and produces a structured report with the rewritten SQL,
 each optimization explained, and estimated impact.
 
-Maps to: *"Every query Qlik generates runs at peak Snowflake efficiency."*
+Goal: *"Every query Qlik generates runs at peak Snowflake efficiency."*
 
 #### SDK features used
 
@@ -427,7 +438,7 @@ SLAs. Queries INFORMATION_SCHEMA and TASK_HISTORY to compute staleness, diagnose
 why tables fell behind, and returns a structured report with SLA violations and
 remediation SQL (resume tasks, adjust schedules).
 
-Maps to: *"Qlik pipelines are always on time, with evidence."*
+Goal: *"Qlik pipelines are always on time, with evidence."*
 
 #### SDK features used
 
@@ -502,7 +513,7 @@ over-privileged roles, unused grants, and access anomalies by cross-referencing
 SHOW GRANTS against ACCESS_HISTORY. Returns a security report with least-privilege
 recommendations and ready-to-run REVOKE/GRANT SQL.
 
-Maps to: *"Every Qlik service account is least-privilege, with evidence."*
+Goal: *"Every Qlik service account is least-privilege, with evidence."*
 
 #### SDK features used
 
@@ -561,13 +572,13 @@ python access_audit_agent.py --role QLIK_ROLE --user QLIK_SVC --days 30
 }
 ```
 
-The access audit agent also prints an SQL audit log to stderr.
+The access audit agent records its SQL the same way as the pre-flight agent.
 
 ---
 
 ## Integration architecture
 
-### Approach 1: Cortex Code Agent SDK (Python)
+### Approach 1: Cortex Code Agent SDK (this folder)
 
 The SDK is designed for asynchronous, authoring-style workflows (30-90 second
 sessions), not sub-second interactions. The recommended integration pattern is:
@@ -582,57 +593,12 @@ Auth is either a scoped Snowflake service account or user OAuth. Snowflake
 governance, audit trail, and RBAC remain intact — CoCo is a specialist tool
 behind the Qlik agent, not a replacement for it.
 
-### Approach 2: Cortex Agent + Cortex REST API
+### Approach 2: Cortex Agent + REST API (no Python)
 
-An alternative to the Python SDK is to define the agent directly in Snowflake
-as a SQL object using `CREATE AGENT`, then invoke it over the
-[Cortex REST API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api).
-This keeps everything server-side — no Python process or backend service needed.
-
-```sql
-CREATE OR REPLACE AGENT MY_DB.MY_SCHEMA.MY_AGENT
-  COMMENT = 'Parses, extracts, and answers questions using Cortex AI functions'
-  PROFILE = '{"display_name": "My Agent", "color": "orange"}'
-  FROM SPECIFICATION
-  $$
-  models:
-    orchestration: auto
-
-  instructions:
-    system: |
-      You are a specialist agent that ...
-
-    response: |
-      Present results in a structured format ...
-
-    sample_questions:
-      - question: "What are the key findings?"
-
-  tools:
-    - tool_spec:
-        type: code_toolset_all
-        name: code_toolset_all
-
-  tool_resources:
-    code_toolset_all:
-      permission_policy:
-        type: always_allow
-  $$;
-```
-
-Once the agent is created, any Qlik integration can call it directly via the
-Cortex REST API — no SDK installation, no Python runtime, no intermediate
-backend service. The agent runs entirely within Snowflake and inherits its
-RBAC, governance, and audit trail.
-
-**When to use which approach:**
-
-| | SDK (Python) | Cortex Agent (SQL + REST API) |
-|---|---|---|
-| **Runtime** | External Python process | Server-side, fully in Snowflake |
-| **Infrastructure** | Requires a backend service (Flask, Lambda, etc.) | No extra infrastructure — call the REST API directly |
-| **Flexibility** | Full Python control: hooks, multi-turn, file I/O, custom logic | Declarative SQL spec with tool resources |
-| **Best for** | Complex orchestration, audit hooks, local file processing, multi-step workflows | Stateless request/response, simpler integrations, keeping everything in Snowflake |
+Every prototype also exists as a SQL `CREATE AGENT` in [`../sql/`](../sql/). It runs
+entirely inside Snowflake and can be called from Qlik Automate or any HTTP
+client. See the [parent README](../README.md#python-sdk-vs-sql-agent) for a
+side-by-side comparison.
 
 ## SDK feature coverage across prototypes
 

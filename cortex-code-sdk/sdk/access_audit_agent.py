@@ -74,6 +74,9 @@ class AccessAuditReport(BaseModel):
 SQL_AUDIT_LOG: list[dict] = []
 
 async def audit_sql_hook(input_data, tool_use_id, context):
+    # Only SQL tool calls are logged. NOTE: the bundled SDK docs name this tool
+    # "SQL" (as in allowed_tools); check which name your SDK version reports,
+    # otherwise the audit log stays empty.
     if input_data.get("tool_name") == "sql_execute":
         sql = input_data.get("tool_input", {}).get("sql", "")
         SQL_AUDIT_LOG.append({
@@ -115,14 +118,29 @@ Report what you find. Do NOT produce structured output yet.
 """
 
 def build_usage_prompt(role: str, user: str, days: int) -> str:
-    user_clause = f"AND USER_NAME = '{user}'" if user != "*" else ""
+    user_clause = f"AND q.USER_NAME = '{user}'" if user != "*" else ""
     return f"""\
 Now cross-reference the grants against actual usage in the last {days} days.
 
 Steps:
-1. Query SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY for the last {days} days
-   where ROLE_NAME = '{role}' {user_clause}. This shows which objects were
-   actually accessed.
+1. Find which objects the role actually accessed in the last {days} days.
+   ACCESS_HISTORY has no role column, so join it to QUERY_HISTORY on QUERY_ID
+   and filter on the role there:
+
+     SELECT obj.value:"objectName"::STRING   AS object_name,
+            obj.value:"objectDomain"::STRING AS object_domain,
+            MAX(a.QUERY_START_TIME)          AS last_used
+       FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY a
+       JOIN SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY  q ON q.QUERY_ID = a.QUERY_ID
+          , LATERAL FLATTEN(input => a.BASE_OBJECTS_ACCESSED) obj
+      WHERE a.QUERY_START_TIME >= DATEADD('day', -{days}, CURRENT_TIMESTAMP())
+        AND q.ROLE_NAME = '{role}' {user_clause}
+      GROUP BY 1, 2;
+
+   Also check OBJECTS_MODIFIED the same way for write grants. Note that
+   privileges {role} passes to other roles are exercised under THOSE roles'
+   names; if SHOW GRANTS OF ROLE showed parent roles, include them in the
+   filter or mark the result as uncertain rather than "unused".
 2. Compare the accessed objects against the grant inventory from the
    previous turn. Any grant whose object was NOT accessed is "unused".
 3. Look for cross-schema or cross-database access patterns that suggest
@@ -179,6 +197,10 @@ async def run(role: str, user: str, days: int) -> None:
         # --- Turn 2: Cross-reference with usage and produce report ---
         print("=== Turn 2: Analyzing usage and producing recommendations ===\n")
 
+        # Turn 2 needs structured output, but options are fixed when the client is
+        # created and the SDK has no public setter, so this swaps the private
+        # _options attribute. If the running session ignores it, the result has no
+        # structured_output and the script prints "No structured output returned."
         client._options = CortexCodeAgentOptions(
             cwd=".",
             allowed_tools=["SQL"],

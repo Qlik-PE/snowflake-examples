@@ -249,99 +249,38 @@ SELECT PARSE_JSON(
 -- =============================================================================
 -- Step 4: Create the RAG Agent
 -- =============================================================================
--- The agent uses the Cortex Search service as a retrieval tool to ground
--- its responses in the knowledge base. It retrieves relevant articles
--- and synthesizes an answer.
+-- The agent uses the Cortex Search service as a retrieval tool to ground its
+-- answers in the knowledge base: it retrieves relevant articles and
+-- synthesizes an answer that cites them.
+--
+-- A dollar-quoted spec can't reference session variables, so the spec is built
+-- as a string inside a scripting block, with the real search-service FQN and
+-- warehouse concatenated in. A literal double-dollar can't appear inside the
+-- block (it would end it), so the spec delimiter is assembled at runtime.
 -- =============================================================================
 
-CREATE OR REPLACE AGENT IDENTIFIER($AGENT_NAME)
-  FROM SPECIFICATION $$
-models:
-  orchestration: auto
-
-instructions:
-  response: |
-    You are a helpful product documentation assistant. Your role is to answer
-    questions about Snowflake products using the knowledge base.
-
-    Rules:
-    - ALWAYS cite the source article title when answering.
-    - If the knowledge base does not contain relevant information, say so clearly.
-    - Be concise — summarize the key points rather than quoting entire articles.
-    - When listing steps, preserve the numbered format from the source.
-    - If the user asks about multiple products, search for each separately.
-
-  orchestration: |
-    Use the ProductDocs search tool to find relevant articles before answering.
-    For troubleshooting questions, filter by category "Troubleshooting".
-    For best practices, filter by category "Best Practices".
-    For setup/how-to questions, search across all categories.
-
-tools:
-  - tool_spec:
-      type: "cortex_search"
-      name: "ProductDocs"
-      description: "Search the product documentation knowledge base for articles about Snowflake Notebooks, Cortex Agents, and Cortex Search. Use this tool to find getting started guides, troubleshooting steps, best practices, and how-to instructions."
-
-tool_resources:
-  ProductDocs:
-    search_service: "<DB>.<SCHEMA>.PRODUCT_DOCS_SEARCH"
-    max_results: 5
-    title_column: "title"
-    id_column: "doc_id"
-    columns_and_descriptions:
-      chunk_text:
-        description: "The main text content of the documentation article"
-        type: "string"
-        searchable: true
-        filterable: false
-      category:
-        description: "Article category. Valid values: Getting Started, Troubleshooting, Best Practices, How-To"
-        type: "string"
-        searchable: false
-        filterable: true
-      product:
-        description: "Product the article is about. Valid values: Notebooks, Cortex Agents, Cortex Search"
-        type: "string"
-        searchable: false
-        filterable: true
-      title:
-        description: "The article title"
-        type: "string"
-        searchable: true
-        filterable: false
-
-  sample_questions:
-    - question: "How do I get started with Cortex Agents?"
-    - question: "My agent is returning empty responses, what should I check?"
-    - question: "What are the best practices for Cortex Search quality?"
-    - question: "How do I connect a Cortex Search service to an agent?"
-    - question: "What is analytical search and how do I enable it?"
-
-execution_environment:
-  type: warehouse
-  warehouse: "<WAREHOUSE>"
-$$;
-
--- Replace placeholders with actual values
--- (The spec uses placeholders because $$ blocks don't interpolate variables)
 EXECUTE IMMEDIATE
 $$
 DECLARE
     v_db VARCHAR;
     v_schema VARCHAR;
     v_wh VARCHAR;
-    v_agent VARCHAR;
+    v_agent_fqn VARCHAR;
     v_search_fqn VARCHAR;
+    v_dq VARCHAR DEFAULT '$' || '$';
+    v_sql VARCHAR;
 BEGIN
     SELECT GETVARIABLE('TARGET_DATABASE') INTO v_db;
     SELECT GETVARIABLE('TARGET_SCHEMA') INTO v_schema;
     SELECT GETVARIABLE('WAREHOUSE') INTO v_wh;
-    SELECT GETVARIABLE('AGENT_NAME') INTO v_agent;
+    SELECT GETVARIABLE('AGENT_NAME') INTO v_agent_fqn;
 
+    v_agent_fqn  := v_db || '.' || v_schema || '.' || v_agent_fqn;
     v_search_fqn := v_db || '.' || v_schema || '.PRODUCT_DOCS_SEARCH';
 
-    EXECUTE IMMEDIATE 'ALTER AGENT ' || v_agent || ' MODIFY LIVE VERSION SET SPECIFICATION $$
+    v_sql := 'CREATE OR REPLACE AGENT ' || v_agent_fqn
+        || ' PROFILE = ''{"display_name": "Product Docs Assistant", "avatar": "SparklesAgentIcon"}'''
+        || ' FROM SPECIFICATION ' || v_dq || '
 models:
   orchestration: auto
 
@@ -407,10 +346,8 @@ tool_resources:
 execution_environment:
   type: warehouse
   warehouse: "' || v_wh || '"
-$$';
-
-    EXECUTE IMMEDIATE 'ALTER AGENT ' || v_agent || ' SET '
-        || 'PROFILE = ''{"display_name": "Product Docs Assistant", "avatar": "SparklesAgentIcon"}''';
+' || v_dq;
+    EXECUTE IMMEDIATE v_sql;
 END;
 $$;
 
