@@ -17,6 +17,7 @@ The examples cover Cortex Agents, Cortex AI functions, Cortex Search, Model Cont
 | Package a Cortex Agent + Semantic View + Qlik MCP as a Native App | [`native-apps/`](native-apps/) |
 | Try Cortex AI functions, Cortex Search/RAG, or analyze agent token cost | [`sql/`](sql/) |
 | Turn a Qlik Data Product into a Snowflake Semantic View | [`skills/qlik-dp-to-semantic-view.md`](skills/qlik-dp-to-semantic-view.md) |
+| Write, review or speed up Qlik chart expressions and set analysis | [`skills/qlik-expression-authoring.md`](skills/qlik-expression-authoring.md) |
 
 ## Repository Structure
 
@@ -78,6 +79,7 @@ A Qlik Automate workflow asks a Cortex Agent to check data-freshness SLAs throug
 ### Skills ([`skills/`](skills/))
 
 - **[qlik-dp-to-semantic-view.md](skills/qlik-dp-to-semantic-view.md):** a Cortex Code skill that converts a Qlik Talend Cloud Data Product into a Snowflake Semantic View. It keeps the governed metadata (descriptions, glossary definitions, trust score) as semantic-view comments, metrics and relationships.
+- **[qlik-expression-authoring.md](skills/qlik-expression-authoring.md):** a Cortex Code skill for writing, reviewing and optimizing Qlik Sense / Qlik Cloud chart expressions. Covers the script-vs-expression placement decision, set analysis in place of `If()` inside aggregations, date and dollar-sign-expansion pitfalls, disciplined `Aggr()` use, master measures, and a performance and verification checklist.
 
 ## Prerequisites
 
