@@ -24,7 +24,7 @@ Qlik integration workflows — reloads, CDC pipelines, data product governance, 
 
 | Use the SDK when you need | Use a SQL agent (`CREATE AGENT`) when you need |
 |---|---|
-| Qlik Automate triggers with structured JSON output | `DATA_AGENT_RUN()` from Snowflake Tasks or stored procedures |
+| Qlik solution triggers with structured JSON output | `DATA_AGENT_RUN()` from Snowflake Tasks or stored procedures |
 | `PreToolUse` audit hooks for compliance logging | Zero-infrastructure server-side execution |
 | Multi-turn investigation with Pydantic validation | REST API integration from any HTTP client |
 | Dual Qlik MCP + Snowflake SQL tool access in one session | Snowflake Intelligence (CoWork) sidebar access |
