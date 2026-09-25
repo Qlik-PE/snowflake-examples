@@ -17,7 +17,8 @@
 -- How Qlik Automate uses it:
 --   The workflow's Snowflake connector block runs
 --     CALL <db>.<schema>.RUN_FRESHNESS_CHECK('<agent fqn>', '<schema to check>', <sla hours>);
---   and branches on the returned STATUS column ('ok' | 'breach' | 'error').
+--   and branches on the returned ALERT_MESSAGE / RELOAD_NEEDED columns (NULL
+--   when STATUS is 'ok').
 --   Parsing happens here, in SQL, because the agent's JSON arrives as text
 --   inside the agent response envelope, which is awkward to unpack in Automate.
 --
@@ -35,11 +36,9 @@
 --     |-- Snowflake connector: CALL RUN_FRESHNESS_CHECK(...)
 --     |      |-- DATA_AGENT_RUN → Cortex Agent (INFORMATION_SCHEMA, TASK_HISTORY)
 --     |      |-- extract the JSON answer, INSERT into FRESHNESS_AUDIT_LOG
---     |      '-- return STATUS, TOTAL_TABLES, TABLES_OK, TABLES_BREACHED, ...
---     |-- Branch on STATUS
---     |     |-- ok     → done
---     |     |-- breach → notify (Slack/Teams/email) + reload the Qlik app
---     |     '-- error  → notify that the check itself failed
+--     |      '-- return STATUS, counts, ALERT_MESSAGE, RELOAD_NEEDED, ...
+--     |-- ALERT_MESSAGE not empty → notify (Slack/Teams/email): breach or failed check
+--     '-- RELOAD_NEEDED not empty → reload the Qlik app
 --     v
 --   Done
 --
@@ -98,7 +97,7 @@ CREATE TABLE IF NOT EXISTS FRESHNESS_AUDIT_LOG (
 -- JSON object with a fixed schema.
 -- =============================================================================
 
-CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.' || $AGENT_NAME)
+CREATE OR REPLACE AGENT IDENTIFIER($AGENT_NAME)
   COMMENT = 'Freshness SLA agent designed for Qlik Automate orchestration — returns structured JSON'
   PROFILE = '{"display_name": "Qlik Automate Freshness", "color": "orange"}'
   FROM SPECIFICATION
@@ -191,6 +190,8 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 --   3. Inserts one row into FRESHNESS_AUDIT_LOG (next to the agent).
 --   4. Returns one row of flat columns. STATUS is 'error' when no valid JSON
 --      answer was found; AGENT_JSON then holds the raw response for debugging.
+--      ALERT_MESSAGE (alert text) and RELOAD_NEEDED ('yes') are NULL when there
+--      is nothing to do, so the workflow branches on "is empty".
 --
 -- Runs with caller's rights, so the agent's SQL runs as the calling role (the
 -- Qlik Automate service user), not as the procedure owner.
@@ -207,7 +208,9 @@ RETURNS TABLE (
     TABLES_OK       NUMBER,
     TABLES_BREACHED NUMBER,
     BREACHES        VARCHAR,
-    AGENT_JSON      VARCHAR
+    AGENT_JSON      VARCHAR,
+    ALERT_MESSAGE   VARCHAR,   -- ready-to-send alert text; NULL when STATUS = 'ok'
+    RELOAD_NEEDED   VARCHAR    -- 'yes' when STATUS = 'breach', otherwise NULL
 )
 LANGUAGE SQL
 EXECUTE AS CALLER
@@ -257,14 +260,37 @@ BEGIN
            COALESCE(j, :v_response)
       FROM (SELECT :v_json AS j);
 
+    -- ALERT_MESSAGE and RELOAD_NEEDED are NULL when nothing needs doing, so the
+    -- workflow can branch with a simple "is empty" condition. The message has
+    -- no double quotes, so it can be dropped into a JSON body as-is.
     res := (
-        SELECT COALESCE(j:status::VARCHAR, 'error')  AS STATUS,
-               j:summary:total_tables::NUMBER        AS TOTAL_TABLES,
-               j:summary:tables_ok::NUMBER           AS TABLES_OK,
-               j:summary:tables_breached::NUMBER     AS TABLES_BREACHED,
-               TO_JSON(j:breaches)                   AS BREACHES,
-               TO_JSON(COALESCE(j, :v_response))     AS AGENT_JSON
-          FROM (SELECT :v_json AS j)
+        WITH r AS (
+            SELECT j, COALESCE(j:status::VARCHAR, 'error') AS status
+              FROM (SELECT :v_json AS j)
+        ),
+        names AS (
+            SELECT LISTAGG(REPLACE(b.value:table_name::VARCHAR, '"', ''), ', ') AS breached
+              FROM r, LATERAL FLATTEN(input => r.j:breaches, outer => TRUE) b
+        )
+        SELECT r.status                                   AS STATUS,
+               r.j:summary:total_tables::NUMBER           AS TOTAL_TABLES,
+               r.j:summary:tables_ok::NUMBER              AS TABLES_OK,
+               r.j:summary:tables_breached::NUMBER        AS TABLES_BREACHED,
+               TO_JSON(r.j:breaches)                      AS BREACHES,
+               TO_JSON(COALESCE(r.j, :v_response))        AS AGENT_JSON,
+               CASE r.status
+                   WHEN 'breach' THEN
+                       ':rotating_light: Freshness SLA breach in ' || :TARGET_SCHEMA || ': '
+                       || COALESCE(r.j:summary:tables_breached::VARCHAR, '?') || ' of '
+                       || COALESCE(r.j:summary:total_tables::VARCHAR, '?')
+                       || ' tables older than ' || :SLA_HOURS::VARCHAR || ' h. Stale: '
+                       || COALESCE(NULLIF(names.breached, ''), 'see audit log') || '.'
+                   WHEN 'error' THEN
+                       ':warning: Freshness check failed for ' || :TARGET_SCHEMA
+                       || ': the agent returned no valid JSON answer. See FRESHNESS_AUDIT_LOG.agent_response.'
+               END                                        AS ALERT_MESSAGE,
+               IFF(r.status = 'breach', 'yes', NULL)      AS RELOAD_NEEDED
+          FROM r, names
     );
     RETURN TABLE(res);
 END;

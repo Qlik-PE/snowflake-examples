@@ -16,23 +16,23 @@ Snowflake procedure RUN_FRESHNESS_CHECK
   │      └── TASK_HISTORY, SHOW TASKS                → why a table is stale
   ├── extracts the agent's JSON answer from the response
   ├── INSERT INTO FRESHNESS_AUDIT_LOG
-  └── returns one row: STATUS, TOTAL_TABLES, TABLES_OK, TABLES_BREACHED, BREACHES, AGENT_JSON
+  └── returns one row: STATUS, counts, BREACHES, AGENT_JSON,
+                       ALERT_MESSAGE (NULL when ok), RELOAD_NEEDED ('yes' on breach)
   │
   ▼
-Qlik Automate: branch on STATUS
-  ├── "ok"     → done
-  ├── "breach" → Slack alert → reload Qlik app
-  └── "error"  → Slack alert that the check itself failed
+Qlik Automate
+  ├── ALERT_MESSAGE not empty → Slack - Send Message (a breach, or a failed check)
+  └── RELOAD_NEEDED not empty → Qlik Cloud Services - Do Reload
 ```
 
-**Why a procedure in the middle?** The agent's JSON answer arrives as text inside the agent response envelope. Unpacking that reliably is simple in SQL and awkward in Automate. The procedure does the parsing and the audit write, so the workflow only reads flat columns.
+**Why a procedure in the middle?** The agent's JSON answer arrives as text inside the agent response envelope. Unpacking that reliably is simple in SQL and awkward in Automate. The procedure does the parsing, the audit write and the alert text, so the workflow only tests whether two columns are empty.
 
 ## What's Included
 
 | File | Description |
 |---|---|
 | [setup.sql](setup.sql) | Creates the `FRESHNESS_AUDIT_LOG` table, the Cortex Agent (instructed to answer with a single JSON object) and the `RUN_FRESHNESS_CHECK` procedure. Also includes test calls and a `curl` example for calling the agent directly over REST. |
-| [qlik-automate-workflow.json](qlik-automate-workflow.json) | Reference workflow definition: config variables → `CALL RUN_FRESHNESS_CHECK` → branch → Slack alert + Qlik reload, or a "check failed" alert. |
+| [qlik-automate-workflow.json](qlik-automate-workflow.json) | Importable Qlik Automate workspace: Start → configuration variables → Snowflake **Do Query** (`CALL RUN_FRESHNESS_CHECK`) → *Alert needed?* → Slack **Send Message**, and *Reload needed?* → Qlik **Do Reload**. |
 
 ## Prerequisites
 
@@ -45,6 +45,7 @@ Qlik Automate: branch on STATUS
 
   The procedure runs with the caller's rights, so the agent's queries run as this role.
 - **Qlik Cloud:** a tenant with Qlik Automate. It is included in Qlik Cloud Analytics Premium and Enterprise.
+- **Slack:** a Slack connection in Qlik Automate, with access to the alert channel.
 
 ## Setup
 
@@ -79,24 +80,31 @@ Qlik Automate: branch on STATUS
 
 For key-pair setup, see [Creating a Snowflake Key Pair connector for Qlik Automate](https://community.qlik.com/t5/Official-Support-Articles/Creating-a-Snowflake-Key-Pair-based-connector-for-Application/ta-p/2512104).
 
-### Step 3: Build the workflow
+### Step 3: Import and configure the workflow
 
-`qlik-automate-workflow.json` describes every block and its settings. Import it, or recreate the blocks in the Automate editor if your tenant's import format differs.
-
-1. Open the **Set Configuration Variables** block and replace every `<placeholder>`:
+1. In Qlik Cloud, open **Automate** → **Create automation**. Right-click the empty canvas → **Upload workspace**, and choose `qlik-automate-workflow.json`.
+2. Set the values in the **Variable** blocks at the top:
 
    | Variable | Description |
    |---|---|
-   | `agent_database` / `agent_schema` / `agent_name` | Location of the agent and procedure (defaults `CORTEX_CODE` / `PUBLIC` / `QLIK_AUTOMATE_FRESHNESS_AGENT`) |
-   | `target_schema` | Schema to monitor, e.g. `ANALYTICS.PUBLIC` |
-   | `sla_hours` | SLA threshold in hours (default `4`) |
-   | `slack_webhook_url` | Slack incoming-webhook URL |
-   | `qlik_app_id_to_reload` | ID of the Qlik app to reload on breach (it's in the app's URL) |
+   | `vAgentSchema` | `DATABASE.SCHEMA` holding the agent, procedure and audit table (default `CORTEX_CODE.PUBLIC`) |
+   | `vAgentName` | Agent name (default `QLIK_AUTOMATE_FRESHNESS_AGENT`) |
+   | `vTargetSchema` | Schema to monitor, e.g. `ANALYTICS.PUBLIC` |
+   | `vSlaHours` | SLA threshold in hours (default `4`) |
+   | `vSlackChannel` | Slack channel for alerts, e.g. `#data-alerts` |
+   | `vQlikAppId` | ID of the Qlik app to reload on breach (it's in the app's URL) |
 
-2. Attach the Snowflake connection from Step 2 to the **Run Freshness Check** block. Give it a generous query timeout, because an agent run can take a minute or more.
-3. In both condition blocks, check that `STATUS` is read from the first row of the Snowflake block's output. The exact reference syntax depends on your tenant.
-4. Configure the Slack blocks, or replace them (see [Customization](#customization)).
+3. Select connections in two blocks' settings:
+   - **Snowflake - Do Query** (`runFreshnessCheck`): the Snowflake connection from Step 2. Give it a generous timeout, because an agent run can take a minute or more.
+   - **Slack - Send Message** (`sendAlert`): your Slack connection. Check that *Channel* shows `{$.vSlackChannel}` and *Text* shows `{$.runFreshnessCheck.item.ALERT_MESSAGE}`.
+4. In the **Start** block, set **Run mode** to **Scheduled**, e.g. every 4 hours.
 5. **Enable** the automation.
+
+**How it flows:** the Do Query block returns one row, and the two conditions run once for that row.
+- **Alert needed?** tests whether `ALERT_MESSAGE` is empty. If it isn't (an SLA breach, or a failed check), the **NO** branch sends it to Slack.
+- **Reload needed?** tests whether `RELOAD_NEEDED` is empty. On a breach it isn't, and the **NO** branch runs **Do Reload** on `{$.vQlikAppId}`.
+
+The **YES** branches are intentionally empty.
 
 ### Step 4: Test end to end
 
@@ -111,7 +119,7 @@ For key-pair setup, see [Creating a Snowflake Key Pair connector for Qlik Automa
 
 ### Notification channel
 
-Replace the Slack blocks with one of:
+Replace **Slack - Send Message** with one of (send `{$.runFreshnessCheck.item.ALERT_MESSAGE}` as the text):
 - **Microsoft Teams:** a Call URL block that posts to a Teams incoming webhook.
 - **Email:** the Qlik Automate **Mail** block.
 - **PagerDuty:** the PagerDuty connector, to open an incident.
@@ -125,7 +133,7 @@ The workflow runs on a 4-hour cron schedule by default. Other options:
 
 ### Monitor several schemas
 
-Duplicate the workflow with different `target_schema` / `sla_hours` values, or add a **Loop** block over a list of schemas that calls the procedure once per schema.
+Duplicate the workflow with different `vTargetSchema` / `vSlaHours` values, or add a **Loop** block over a list of schemas that runs the Do Query block once per schema.
 
 ### Call the agent directly over REST
 
@@ -138,10 +146,11 @@ If another system needs the agent without the procedure, call `POST /api/v2/data
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `CALL` fails with "insufficient privileges" | Service role is missing a grant | Grant `SNOWFLAKE.CORTEX_USER`, `USAGE` on the agent and procedure, and `INSERT` on the audit table |
-| `STATUS` is `error` | The agent timed out, or its answer contained no valid JSON with a `status` field | Look at `agent_response` in the latest audit row; test the agent with `DATA_AGENT_RUN` |
+| Slack says "Freshness check failed" (`STATUS` = `error`) | The agent timed out, or its answer contained no valid JSON with a `status` field | Look at `agent_response` in the latest audit row; test the agent with `DATA_AGENT_RUN` |
 | Every table is reported as fresh | The service role can't see the tables | Check that the role has access to the target schema's `INFORMATION_SCHEMA` |
 | Snowflake block times out | Agent runs are slow on first use | Increase the block's query timeout |
-| Slack alert not delivered | Webhook URL invalid, or the Slack app is disabled | Test the webhook with `curl`; check the Slack app settings |
+| Upload workspace fails | The file was edited into invalid JSON, or isn't a workspace export | Re-download it from the repository; the file must have top-level `blocks` and `variables` arrays |
+| Slack alert not delivered | Slack connection not selected, or it can't post to the channel | Select the connection in **Slack - Send Message**, and invite the Slack app to `vSlackChannel` |
 | "Connection failed" on the Snowflake block | Key-pair auth misconfigured | Re-check the `.p8` key, username and account identifier, then re-test the connection |
 
 ## Agent Response Schema

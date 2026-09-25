@@ -1,134 +1,543 @@
 {
-  "_comment": "Reference definition of the Cortex Agent Freshness Monitor workflow. It lists every block and setting; import it (Automate > Create automation > Import) or rebuild the blocks in the editor if your tenant's import format differs. Replace all <placeholder> values before enabling.",
-  "name": "Snowflake Cortex Agent — Freshness SLA Monitor",
-  "description": "Runs a Snowflake Cortex Agent freshness check through RUN_FRESHNESS_CHECK, alerts and reloads a Qlik app on breach, and alerts if the check itself fails. The procedure writes the audit record.",
-  "state": "disabled",
-  "triggers": [
-    {
-      "type": "schedule",
-      "schedule": {
-        "cronExpression": "0 */4 * * *",
-        "timezone": "UTC"
-      },
-      "comment": "Runs every 4 hours. Adjust to match your SLA check cadence."
-    }
-  ],
   "blocks": [
     {
-      "id": "start",
-      "type": "start",
-      "name": "Start — Scheduled or Webhook",
-      "comment": "Trigger: cron schedule (every 4h) or external webhook. To use a webhook trigger instead, change triggers[0].type to 'webhook' and use the generated URL.",
-      "outputs": ["set_variables"]
+      "id": "79CED377-7ACF-4DFA-B31D-4C8E93C78883",
+      "type": "StartBlock",
+      "disabled": false,
+      "name": "Start",
+      "displayName": "Start",
+      "comment": "Runs manually after import. To run every 4 hours, set Run mode to Scheduled in the block's settings.",
+      "childId": "2E033981-17B6-4146-B2FE-577EA2486514",
+      "inputs": [
+        {
+          "id": "run_mode",
+          "value": "manual",
+          "type": "select",
+          "structure": {}
+        }
+      ],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 0
     },
     {
-      "id": "set_variables",
-      "type": "variable",
-      "name": "Set Configuration Variables",
-      "comment": "Central config — edit these values for your environment.",
-      "variables": {
-        "agent_database": "CORTEX_CODE",
-        "agent_schema": "PUBLIC",
-        "agent_name": "QLIK_AUTOMATE_FRESHNESS_AGENT",
-        "target_schema": "ANALYTICS.PUBLIC",
-        "sla_hours": 4,
-        "slack_webhook_url": "<your-slack-incoming-webhook-url>",
-        "qlik_app_id_to_reload": "<your-qlik-app-id>"
-      },
-      "outputs": ["run_check"]
+      "id": "2E033981-17B6-4146-B2FE-577EA2486514",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vAgentSchema",
+      "displayName": "Variable - vAgentSchema",
+      "comment": "Database.schema that holds the agent, RUN_FRESHNESS_CHECK and FRESHNESS_AUDIT_LOG.",
+      "childId": "F097B4F9-38AB-4367-8BBB-9A5C7FFC7E1E",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 120,
+      "variableGuid": "69614AF2-A185-4AFB-BFEF-062DB538C849",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "B78D5F94-53F9-4E54-B265-971447D2A2CC",
+          "name": "Set value of { variable }",
+          "value": "CORTEX_CODE.PUBLIC"
+        }
+      ]
     },
     {
-      "id": "run_check",
-      "type": "snowflake",
-      "name": "Run Freshness Check (Cortex Agent)",
-      "comment": "Calls RUN_FRESHNESS_CHECK, which runs the agent, extracts its JSON answer, writes the audit row and returns ONE row: STATUS ('ok' | 'breach' | 'error'), TOTAL_TABLES, TABLES_OK, TABLES_BREACHED, BREACHES (JSON text), AGENT_JSON (JSON text). Agent runs can take a minute or more; allow a long query timeout.",
-      "connector": "snowflake",
-      "operation": "executeQuery",
-      "parameters": {
-        "query": "CALL {$.set_variables.agent_database}.{$.set_variables.agent_schema}.RUN_FRESHNESS_CHECK('{$.set_variables.agent_database}.{$.set_variables.agent_schema}.{$.set_variables.agent_name}', '{$.set_variables.target_schema}', {$.set_variables.sla_hours})"
-      },
-      "outputs": ["check_breach"]
+      "id": "F097B4F9-38AB-4367-8BBB-9A5C7FFC7E1E",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vAgentName",
+      "displayName": "Variable - vAgentName",
+      "comment": "Name of the Cortex Agent created by setup.sql.",
+      "childId": "D0D7464F-B2F3-4545-82C5-B79009CB027F",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 240,
+      "variableGuid": "5EC725D0-4AC8-4828-93E9-E30F293A7812",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "8CAEBD4F-5EB1-4F3C-BA1D-E8EE79D34EA8",
+          "name": "Set value of { variable }",
+          "value": "QLIK_AUTOMATE_FRESHNESS_AGENT"
+        }
+      ]
     },
     {
-      "id": "check_breach",
-      "type": "condition",
-      "name": "SLA Breach?",
-      "comment": "Reads STATUS from the first (only) row returned by run_check. Adjust the row/column reference to your tenant's output mapping for the Snowflake block.",
-      "condition": "{$.run_check[0].STATUS} == 'breach'",
-      "true_output": "send_slack_alert",
-      "false_output": "check_error"
+      "id": "D0D7464F-B2F3-4545-82C5-B79009CB027F",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vTargetSchema",
+      "displayName": "Variable - vTargetSchema",
+      "comment": "Schema to check for stale tables (DATABASE.SCHEMA).",
+      "childId": "7B5C0E99-3F13-423E-8384-1DC67188D2F4",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 360,
+      "variableGuid": "83D7D645-C89E-4A6E-898A-CF3973BD8460",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "D41A6CBB-9C54-4184-B066-4543E326DFB6",
+          "name": "Set value of { variable }",
+          "value": "ANALYTICS.PUBLIC"
+        }
+      ]
     },
     {
-      "id": "send_slack_alert",
-      "type": "callUrl",
-      "name": "Send Slack Alert",
-      "comment": "Posts a breach notification to Slack. Replace with a Teams webhook or email block as needed.",
-      "method": "POST",
-      "url": "{$.set_variables.slack_webhook_url}",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "text": ":rotating_light: *Freshness SLA Breach Detected*\n\n*Schema:* `{$.set_variables.target_schema}`\n*Tables Breached:* {$.run_check[0].TABLES_BREACHED} of {$.run_check[0].TOTAL_TABLES}\n*SLA Threshold:* {$.set_variables.sla_hours} hours\n\nBreached tables:\n```\n{$.run_check[0].BREACHES}\n```\n\n_Triggered by Qlik Automate → Snowflake Cortex Agent_"
-      },
-      "outputs": ["reload_qlik_app"]
+      "id": "7B5C0E99-3F13-423E-8384-1DC67188D2F4",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vSlaHours",
+      "displayName": "Variable - vSlaHours",
+      "comment": "Maximum acceptable staleness, in hours.",
+      "childId": "F6120C4F-6334-4317-9A94-BD1820885F5B",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 480,
+      "variableGuid": "A490E034-7205-430E-ACB4-D5D7D75EE3CC",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "57F6F17A-8F0B-49F4-89CB-9A1CAED16B19",
+          "name": "Set value of { variable }",
+          "value": "4"
+        }
+      ]
     },
     {
-      "id": "reload_qlik_app",
-      "type": "qlikCloud",
-      "name": "Reload Qlik App (remediation)",
-      "comment": "Reloads the Qlik app that consumes the stale tables, using the native Qlik Cloud connector. Remove this block if remediation is handled differently.",
-      "connector": "qlik-cloud",
-      "operation": "reloadApp",
-      "parameters": {
-        "appId": "{$.set_variables.qlik_app_id_to_reload}"
-      },
-      "outputs": ["end"]
+      "id": "F6120C4F-6334-4317-9A94-BD1820885F5B",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vSlackChannel",
+      "displayName": "Variable - vSlackChannel",
+      "comment": "Slack channel for alerts, e.g. #data-alerts or a channel ID.",
+      "childId": "918BA0AF-9F61-4C31-9732-12F85090EDB6",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 600,
+      "variableGuid": "C1B57613-0135-4006-BA4C-37549380C3BF",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "37E2BB23-25FD-4225-9100-0918A3A31321",
+          "name": "Set value of { variable }",
+          "value": "<your-slack-channel>"
+        }
+      ]
     },
     {
-      "id": "check_error",
-      "type": "condition",
-      "name": "Check Failed?",
-      "comment": "STATUS 'error' means the agent returned no parseable answer. The raw response is in the audit row and in AGENT_JSON.",
-      "condition": "{$.run_check[0].STATUS} == 'error'",
-      "true_output": "send_error_alert",
-      "false_output": "end"
+      "id": "918BA0AF-9F61-4C31-9732-12F85090EDB6",
+      "type": "VariableBlock",
+      "disabled": false,
+      "name": "vQlikAppId",
+      "displayName": "Variable - vQlikAppId",
+      "comment": "App reloaded by the Do Reload block you add in the 'Reload needed' branch.",
+      "childId": "4AA97F86-B00A-4DE0-A0DE-DF728BEDC7F5",
+      "inputs": [],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 720,
+      "variableGuid": "7C6DCC9C-708F-45A5-B83D-A30E34D0A9DF",
+      "operations": [
+        {
+          "id": "set_value",
+          "key": "55E7D82B-90FF-4F94-8AE1-C72244FABF50",
+          "name": "Set value of { variable }",
+          "value": "<your-qlik-app-id>"
+        }
+      ]
     },
     {
-      "id": "send_error_alert",
-      "type": "callUrl",
-      "name": "Send Slack Alert (check failed)",
-      "comment": "Tells the team the freshness check itself failed, so a silent monitor doesn't look like a healthy schema.",
-      "method": "POST",
-      "url": "{$.set_variables.slack_webhook_url}",
-      "headers": {
-        "Content-Type": "application/json"
-      },
-      "body": {
-        "text": ":warning: *Freshness check failed* for `{$.set_variables.target_schema}`: the Cortex Agent returned no valid JSON answer. See FRESHNESS_AUDIT_LOG.agent_response for the raw response."
-      },
-      "outputs": ["end"]
+      "id": "4AA97F86-B00A-4DE0-A0DE-DF728BEDC7F5",
+      "type": "EndpointBlock",
+      "disabled": false,
+      "name": "runFreshnessCheck",
+      "displayName": "Snowflake - Do Query",
+      "comment": "Select your Snowflake connection in this block's settings. Runs RUN_FRESHNESS_CHECK, which calls the Cortex Agent, writes the audit row and returns one row (STATUS, TABLES_BREACHED, ALERT_MESSAGE, RELOAD_NEEDED, ...). The loop below runs once for that row. Allow a long query timeout: agent runs can take a minute or more.",
+      "childId": null,
+      "inputs": [
+        {
+          "id": "e2f01500-bb27-11ec-9281-334a4766bfad",
+          "value": "CALL {$.vAgentSchema}.RUN_FRESHNESS_CHECK('{$.vAgentSchema}.{$.vAgentName}', '{$.vTargetSchema}', {$.vSlaHours})",
+          "type": "string",
+          "structure": {}
+        }
+      ],
+      "settings": [
+        {
+          "id": "datasource",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "maxitemcount",
+          "value": null,
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "blendr_on_error",
+          "value": "stop",
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "cache",
+          "value": "0",
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "automations_censor_data",
+          "value": false,
+          "type": "checkbox",
+          "structure": {}
+        }
+      ],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 0,
+      "y": 840,
+      "datasourcetype_guid": "0b088350-bb26-11ec-8eb0-51dd55850537",
+      "endpoint_guid": "d2b222c0-bb27-11ec-9961-cbf18e8122ff",
+      "endpoint_role": "list",
+      "loopBlockId": "11DB9765-550C-45B2-A048-0ED7AF370CC6"
     },
     {
-      "id": "end",
-      "type": "end",
-      "name": "Done"
+      "id": "11DB9765-550C-45B2-A048-0ED7AF370CC6",
+      "type": "IfElseBlock",
+      "disabled": false,
+      "name": "alertNeeded",
+      "displayName": "Condition - Alert needed?",
+      "comment": "ALERT_MESSAGE is empty when STATUS is 'ok', so the YES branch stays empty. NO branch: send the alert to Slack (covers SLA breaches and failed checks).",
+      "childId": "22B7DD6F-EC7A-4DE6-8F26-4CDC9EE52E8A",
+      "inputs": [
+        {
+          "id": "conditions",
+          "value": {
+            "mode": "all",
+            "conditions": [
+              {
+                "input1": "{$.runFreshnessCheck.item.ALERT_MESSAGE}",
+                "input2": null,
+                "operator": "empty"
+              }
+            ]
+          },
+          "type": "custom",
+          "structure": []
+        }
+      ],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "both",
+          "isCollapsed": false
+        },
+        {
+          "name": "yes",
+          "isCollapsed": false
+        },
+        {
+          "name": "no",
+          "isCollapsed": false
+        }
+      ],
+      "x": 300,
+      "y": 960,
+      "childTrueId": null,
+      "childFalseId": "3D8C8F17-F94D-49CD-AA1B-17957244574F"
+    },
+    {
+      "id": "22B7DD6F-EC7A-4DE6-8F26-4CDC9EE52E8A",
+      "type": "IfElseBlock",
+      "disabled": false,
+      "name": "reloadNeeded",
+      "displayName": "Condition - Reload needed?",
+      "comment": "RELOAD_NEEDED is 'yes' only on an SLA breach, so the YES branch stays empty. NO branch: reload the Qlik app.",
+      "childId": null,
+      "inputs": [
+        {
+          "id": "conditions",
+          "value": {
+            "mode": "all",
+            "conditions": [
+              {
+                "input1": "{$.runFreshnessCheck.item.RELOAD_NEEDED}",
+                "input2": null,
+                "operator": "empty"
+              }
+            ]
+          },
+          "type": "custom",
+          "structure": []
+        }
+      ],
+      "settings": [],
+      "collapsed": [
+        {
+          "name": "both",
+          "isCollapsed": false
+        },
+        {
+          "name": "yes",
+          "isCollapsed": false
+        },
+        {
+          "name": "no",
+          "isCollapsed": false
+        }
+      ],
+      "x": 300,
+      "y": 1200,
+      "childTrueId": null,
+      "childFalseId": "BD644494-3DFE-488C-B85A-DA1D3E02745C"
+    },
+    {
+      "id": "3D8C8F17-F94D-49CD-AA1B-17957244574F",
+      "type": "EndpointBlock",
+      "disabled": false,
+      "name": "sendAlert",
+      "displayName": "Slack - Send Message",
+      "comment": "Select your Slack connection in this block's settings. Sends ALERT_MESSAGE (an SLA breach or a failed check) to {$.vSlackChannel}.",
+      "childId": null,
+      "inputs": [
+        {
+          "id": "89579ea0-c548-11eb-b9e0-9fea01e8ca23",
+          "value": "{$.vSlackChannel}",
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "8961fc70-c548-11eb-8ae2-f728bc67e19f",
+          "value": "{$.runFreshnessCheck.item.ALERT_MESSAGE}",
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "896a8470-c548-11eb-9a4c-430357e86626",
+          "value": null,
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "8970c910-c548-11eb-bd5b-594189a86540",
+          "value": null,
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "8977a3c0-c548-11eb-ac6d-918c14d2f88c",
+          "value": null,
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "8c4cbdf0-cd1c-11eb-af0e-e595e2810f0d",
+          "value": null,
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "ecce34c0-cd1c-11eb-b6e4-139d5ce8c99e",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        }
+      ],
+      "settings": [
+        {
+          "id": "datasource",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "blendr_on_error",
+          "value": "stop",
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "automations_censor_data",
+          "value": false,
+          "type": "checkbox",
+          "structure": {}
+        }
+      ],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 600,
+      "y": 1080,
+      "datasourcetype_guid": "0d86ee8a-27c0-11ea-921c-022e6b5ea1e2",
+      "endpoint_guid": "893cc900-c548-11eb-b967-a9fc4c267c43",
+      "endpoint_role": "create"
+    },
+    {
+      "id": "BD644494-3DFE-488C-B85A-DA1D3E02745C",
+      "type": "SnippetBlock",
+      "disabled": false,
+      "name": "reloadQlikApp",
+      "displayName": "Qlik Cloud Services - Do Reload",
+      "comment": "Reloads {$.vQlikAppId} as remediation. Only runs on an SLA breach.",
+      "childId": null,
+      "inputs": [
+        {
+          "id": "29603390-e716-11ea-9e37-05e08ee32111",
+          "value": "{$.vQlikAppId}",
+          "type": "string",
+          "structure": {}
+        },
+        {
+          "id": "2ac9eef0-a677-11eb-aacc-8b755d0fe484",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "6892c0c0-c795-11eb-9860-9dc8cb705e25",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "ecebf340-c797-11eb-8671-53658babb1a1",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "069de770-8277-11f0-a252-ad6769632a1c",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "06a02bd0-8277-11f0-b78b-f7910663702f",
+          "value": null,
+          "type": "object",
+          "mode": "keyValue",
+          "structure": {}
+        },
+        {
+          "id": "cc8dd1c0-a438-11f0-9e17-c77404b63446",
+          "value": null,
+          "type": "select",
+          "structure": {}
+        }
+      ],
+      "settings": [
+        {
+          "id": "blendr_on_error",
+          "value": "stop",
+          "type": "select",
+          "structure": {}
+        },
+        {
+          "id": "automations_censor_data",
+          "value": false,
+          "type": "checkbox",
+          "structure": {}
+        }
+      ],
+      "collapsed": [
+        {
+          "name": "loop",
+          "isCollapsed": false
+        }
+      ],
+      "x": 600,
+      "y": 1320,
+      "datasourcetype_guid": "61a87510-c7a3-11ea-95da-0fb0c241e75c",
+      "snippet_guid": "b5dbb7a0-e715-11ea-b2bf-43bb35adee19"
     }
   ],
-  "connections": [
+  "variables": [
     {
-      "id": "snowflake",
-      "type": "snowflake",
-      "name": "Snowflake (key-pair auth)",
-      "comment": "Configure in Qlik Automate: Connections > Add > Snowflake. Use key-pair authentication with an encrypted .p8 private key and a service user whose role has the grants listed in setup.sql. See README for setup steps.",
-      "parameters": {
-        "account": "<your-account>",
-        "username": "<your-service-user>",
-        "database": "CORTEX_CODE",
-        "schema": "PUBLIC",
-        "warehouse": "<your-warehouse>",
-        "authMethod": "keypair"
-      }
+      "guid": "69614AF2-A185-4AFB-BFEF-062DB538C849",
+      "name": "vAgentSchema",
+      "type": "string"
+    },
+    {
+      "guid": "5EC725D0-4AC8-4828-93E9-E30F293A7812",
+      "name": "vAgentName",
+      "type": "string"
+    },
+    {
+      "guid": "83D7D645-C89E-4A6E-898A-CF3973BD8460",
+      "name": "vTargetSchema",
+      "type": "string"
+    },
+    {
+      "guid": "A490E034-7205-430E-ACB4-D5D7D75EE3CC",
+      "name": "vSlaHours",
+      "type": "number"
+    },
+    {
+      "guid": "C1B57613-0135-4006-BA4C-37549380C3BF",
+      "name": "vSlackChannel",
+      "type": "string"
+    },
+    {
+      "guid": "7C6DCC9C-708F-45A5-B83D-A30E34D0A9DF",
+      "name": "vQlikAppId",
+      "type": "string"
     }
   ]
 }
