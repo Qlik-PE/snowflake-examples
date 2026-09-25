@@ -20,17 +20,6 @@ Qlik integration workflows — reloads, CDC pipelines, data product governance, 
 - **Audit hooks.** `PreToolUse` hooks log every SQL statement the agent executes, providing a full audit trail for compliance-sensitive Qlik integration workflows.
 - **MCP connectivity.** Connect agents to Qlik Cloud MCP servers alongside Snowflake tools, enabling agents that reason across both platforms in a single session.
 
-**When to use the SDK vs a SQL Cortex Agent:**
-
-| Use the SDK when you need | Use a SQL agent (`CREATE AGENT`) when you need |
-|---|---|
-| Qlik solution triggers with structured JSON output | `DATA_AGENT_RUN()` from Snowflake Tasks or stored procedures |
-| `PreToolUse` audit hooks for compliance logging | Zero-infrastructure server-side execution |
-| Multi-turn investigation with Pydantic validation | REST API integration from any HTTP client |
-| Dual Qlik MCP + Snowflake SQL tool access in one session | Snowflake Intelligence (CoWork) sidebar access |
-
-For a detailed feature-by-feature comparison, see the [SDK vs Cortex Agent table](#sdk-python-vs-cortex-agent-sql--rest-api) below.
-
 **Resources:**
 - [SDK documentation](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/cortex-code-agent-sdk) | [Quickstart](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/quickstart) | [Python reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/python-reference) | [TypeScript reference](https://docs.snowflake.com/en/user-guide/cortex-code-agent-sdk/typescript-reference)
 - [Snowflake CoCo product page](https://www.snowflake.com/en/product/features/cortex-code/)
