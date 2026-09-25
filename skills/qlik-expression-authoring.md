@@ -108,7 +108,85 @@ Sum({<Customer = P({<Product = {'A'}>} Customer)>} Sales)
 Sum({<Customer = E({<Product = {'A'}>} Customer)>} Sales)
 ```
 
-### Step 4 — Handle Dates and Dollar-Sign Expansion Safely
+### Step 4 — Consider an Outer Set Expression
+
+A set expression can also sit **outside** the aggregation, at the start of the lexical scope (Qlik Sense August 2022+, QlikView May 2023+). Two things make this worth reaching for.
+
+**It removes repetition** across multi-aggregation expressions:
+
+```qlik
+// Inner — the same scope restated in every aggregation
+Sum({$<Year = {2021}>} Sales) / Count({$<Year = {2021}>} DISTINCT Customer)
+
+// Outer — written once, applies to both
+{<Year = {2021}>} Sum(Sales) / Count(DISTINCT Customer)
+```
+
+**It can scope a master measure** — which inner set analysis cannot do:
+
+```qlik
+{<Year = {$(=Max(Year) - 1)}>} [Net Revenue]
+```
+
+This is the idiom for prior-year, single-region, or budget-basis variants of a governed metric **without cloning it**. Prefer it over duplicating a master measure.
+
+**Scope is lexical.** An outer set expression affects the whole expression unless round brackets confine it:
+
+```qlik
+( {<Year = {2021}>} Sum(Amount) / Count(DISTINCT Customer) ) - Avg(CustomerSales)
+// Avg(CustomerSales) is NOT scoped
+```
+
+**Inheritance depends on whether the inner set has an identifier.** This is the rule to internalise:
+
+```qlik
+// Inner HAS an identifier ({1}) → the outer set is NOT applied to it
+{<Year = {2023}>} Sum(Sales) / Count({1} DISTINCT OrderNumber)
+
+// Inner has NO identifier → outer and both inners all apply
+{<Year = {2023}>}
+    Sum({<Status = {'Confirmed'}>} Sales_Stream1)
+  + Sum({<UpdatedStatus = {'Confirmed'}>} Sales_Stream2)
+```
+
+Where outer and inner touch the same field, the assignment operator decides the merge: `=` replaces the outer selection, `+=` unions with it, `*=` intersects.
+
+**Chains** evaluate left to right, rightmost wins on conflict:
+
+```qlik
+{<Year = {2021}>} {<Region = {"Europe"}>} Sum({$<Product = {"XI345"}>} Sales)
+```
+
+> **Warning:** Only **one** inner set expression is honoured.
+> Outer set expressions may be chained without limit, but two adjacent *inner* set expressions raise **no error** — only the rightmost is evaluated. The other is silently ignored, producing a wrong number that parses cleanly.
+
+With `Aggr()`, the inner aggregation never inherits context from the outer aggregation — it inherits from `Aggr()`'s own set expression. An outer set expression, however, is inherited by both.
+
+> **Danger:** Implicit selection set clearing.
+> If a set expression yields an **empty set** for a dimension and another outer set expression follows it, that dimension's selection is silently **cleared back to the full set** — the opposite of the intended filter.
+
+```qlik
+{<Year = {}>} {<Region = {"Europe"}>} Sum(Sales)
+// Year={} is discarded; every year is included
+```
+
+Empty sets are not only typos (`{'0025'}` for `{'2025'}`). They arise legitimately whenever a user's selection leaves no matching data — `Region = 'Europe'` combined with `{<ProductCategory = {'Shirts'}>}` when no shirts sell in Europe. Only the affected dimension is cleared; other sets pass through intact.
+
+Two fixes. Move the component into the **last** outer expression in the chain:
+
+```qlik
+{<Product = {"XI345"}>} {<Year = {}, Region = {"Europe"}>} Sum(Sales)
+```
+
+Or use the **empty set preserve flag** `&` — a single `&` at the very start of an outer set expression, before any modifiers, identifiers, or operators. Valid in any outer set expression **except the last** in a chain:
+
+```qlik
+{& <Year = {}, Product = {XI345}>} {<Region = {Europe}>} Sum(Sales)
+```
+
+When a chained expression returns more rows than expected, suspect implicit clearing before suspecting the data.
+
+### Step 5 — Handle Dates and Dollar-Sign Expansion Safely
 
 **The most common Qlik expression bug:** comparing a date field to a text string. Qlik stores dates as numbers with a display format; a literal like `{'2026-01-01'}` matches only if the string representation matches exactly.
 
@@ -141,7 +219,7 @@ Prior-year comparison, written the durable way:
 Sum({<Year = {$(=Max(Year) - 1)}, Month = >} Sales)
 ```
 
-### Step 5 — Use Aggr() Only When You Must
+### Step 6 — Use Aggr() Only When You Must
 
 `Aggr()` builds a temporary in-memory result set at a grain you specify, then aggregates over it. It is powerful and it is expensive — it is the usual culprit behind a chart that hangs.
 
@@ -163,7 +241,7 @@ Rules for `Aggr()`:
 - In charts with cyclic or drill-down groups, the dimension inside `Aggr()` must be resolved with `$(=GetCurrentField(GroupName))` — a hardcoded field breaks on drill.
 - A set-modifier search condition (`{"=Sum(Sales) > X"}`) is very often a cheaper equivalent. Try it first.
 
-### Step 6 — Inter-Record Functions for Running Totals and Trends
+### Step 7 — Inter-Record Functions for Running Totals and Trends
 
 Accumulation and period-over-period inside a chart use `RangeSum()` with `Above()` rather than an `Aggr()` construct:
 
@@ -184,11 +262,13 @@ Caveats:
 - They break in pivot tables with expanded/collapsed states in non-obvious ways. Prefer `Before()`/`After()` in pivots, or precompute in the script.
 - If the calendar has gaps, the "previous row" is not the previous period. Use a dense master calendar in the script.
 
-### Step 7 — Make It Maintainable
+### Step 8 — Make It Maintainable
 
 **Promote to a master measure.** Any expression used more than once becomes a master measure — single version of the truth, governed, reusable in self-service, and referenceable from other expressions. Do not copy-paste an expression into a second chart.
 
 **Naming.** Give the master measure the business name (`Net Revenue`) and keep the underlying field name distinct (`RevenueAmount`). If a master measure and a field share a name, Qlik resolves to the master measure with no way to disambiguate — rename in the script to avoid this trap.
+
+**Do not clone a master measure to change its scope.** A prior-year or single-region variant is an outer set expression applied to the existing measure — `{<Year = {$(=Max(Year) - 1)}>} [Net Revenue]` — not a second master measure that will drift from the first. See Step 4.
 
 **Master measures vs. variables:**
 
@@ -215,7 +295,7 @@ Sum(
 
 > **Warning:** Do not put `//`, `#`, or `REM` whole-line comments in expressions used in *property* fields (colour, title, conditional show). Property expressions do not consistently support comment syntax and will fail to evaluate. Block comments `/* */` are safer there; better still, keep property expressions trivial.
 
-### Step 8 — Verify
+### Step 9 — Verify
 
 Never ship an expression on the basis that it parsed.
 
@@ -253,12 +333,17 @@ Work down this list when a sheet is slow; the top items pay off most.
 | Breaks on drill-down | Hardcoded field inside `Aggr()` | `$(=GetCurrentField(GroupName))` |
 | Running total wrong after a selection | Gaps in the dimension, or sort order changed | Dense master calendar; verify sort |
 | Comparison measure ignores a filter it should respect | `{1}` used where `{$}` with modifiers was needed | Use `{$<…>}` and override only the intended field |
+| Chained set expression returns far too many rows | Implicit selection set clearing — an empty set was silently restored to the full set | Move the component to the last outer expression, or add the `&` empty set preserve flag |
+| Outer set expression appears to be ignored | Inner set expression contains a set identifier, so it overrides the outer context | Remove the inner identifier, or move the scope inward |
+| One of two adjacent inner set expressions has no effect | Only the rightmost inner set expression is evaluated; no error is raised | Merge them into a single inner set expression |
 
 ## Deliverable Checklist
 
 - [ ] Placement decision recorded — why this is an expression and not a script column
 - [ ] Selection contract stated: what it respects, what it ignores, why
 - [ ] Set analysis used in place of `If()` inside aggregations
+- [ ] Repeated inner scopes collapsed into an outer set expression where it aids readability
+- [ ] Chained set expressions checked for implicit clearing; `&` flag applied where an empty set must survive
 - [ ] Date literals built with `$(=Date(…))`, correct quote type throughout
 - [ ] `Aggr()` justified, grain fully specified, not nested
 - [ ] Promoted to a master measure if used more than once; business-friendly name distinct from field names
