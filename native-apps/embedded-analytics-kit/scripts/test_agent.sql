@@ -14,6 +14,14 @@
 SET APP_NAME = 'EMBEDDED_ANALYTICS_KIT';
 SET AGENT_FQN = $APP_NAME || '.CORE.ANALYTICS_AGENT';
 
+-- IDENTIFIER() takes a literal or a bare variable, never a concatenation,
+-- so every qualified name is precomputed here.
+SET CORE_SCHEMA       = $APP_NAME || '.CORE';
+SET T_ACCOUNTS        = $CORE_SCHEMA || '.ACCOUNTS';
+SET T_SUBSCRIPTIONS   = $CORE_SCHEMA || '.SUBSCRIPTIONS';
+SET T_MONTHLY_REVENUE = $CORE_SCHEMA || '.MONTHLY_REVENUE';
+SET T_USAGE_EVENTS    = $CORE_SCHEMA || '.USAGE_EVENTS';
+
 -- =============================================================================
 -- Test 1: Pure Snowflake - Semantic View / Cortex Analyst
 -- =============================================================================
@@ -82,16 +90,16 @@ SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
 -- =============================================================================
 -- Quick sanity checks on the underlying tables
 
-SELECT 'accounts' AS tbl, COUNT(*) AS row_count FROM IDENTIFIER($APP_NAME || '.CORE.ACCOUNTS')
+SELECT 'accounts' AS tbl, COUNT(*) AS row_count FROM IDENTIFIER($T_ACCOUNTS)
 UNION ALL
-SELECT 'subscriptions', COUNT(*) FROM IDENTIFIER($APP_NAME || '.CORE.SUBSCRIPTIONS')
+SELECT 'subscriptions', COUNT(*) FROM IDENTIFIER($T_SUBSCRIPTIONS)
 UNION ALL
-SELECT 'monthly_revenue', COUNT(*) FROM IDENTIFIER($APP_NAME || '.CORE.MONTHLY_REVENUE')
+SELECT 'monthly_revenue', COUNT(*) FROM IDENTIFIER($T_MONTHLY_REVENUE)
 UNION ALL
-SELECT 'usage_events', COUNT(*) FROM IDENTIFIER($APP_NAME || '.CORE.USAGE_EVENTS');
+SELECT 'usage_events', COUNT(*) FROM IDENTIFIER($T_USAGE_EVENTS);
 
 -- Verify semantic view exists
-SHOW SEMANTIC VIEWS IN SCHEMA IDENTIFIER($APP_NAME || '.CORE');
+SHOW SEMANTIC VIEWS IN SCHEMA IDENTIFIER($CORE_SCHEMA);
 
 -- Verify agent exists
-SHOW AGENTS IN SCHEMA IDENTIFIER($APP_NAME || '.CORE');
+SHOW AGENTS IN SCHEMA IDENTIFIER($CORE_SCHEMA);

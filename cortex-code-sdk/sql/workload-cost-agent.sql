@@ -26,7 +26,7 @@ SET TARGET_SCHEMA   = 'PUBLIC';
 USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
-CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.WORKLOAD_COST_AGENT')
+CREATE OR REPLACE AGENT WORKLOAD_COST_AGENT
   COMMENT = 'Attributes Snowflake credit consumption to Qlik-originated workloads with optimization recommendations'
   PROFILE = '{"display_name": "Workload Cost", "color": "green"}'
   FROM SPECIFICATION

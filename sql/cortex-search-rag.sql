@@ -185,7 +185,7 @@ FROM product_docs;
 CREATE OR REPLACE CORTEX SEARCH SERVICE product_docs_search
   ON chunk_text
   ATTRIBUTES category, product
-  WAREHOUSE = IDENTIFIER($WAREHOUSE)
+  WAREHOUSE = $WAREHOUSE
   TARGET_LAG = '1 hour'
   EMBEDDING_MODEL = 'snowflake-arctic-embed-l-v2.0'
   AS (
@@ -254,8 +254,8 @@ SELECT PARSE_JSON(
 -- synthesizes an answer that cites them.
 --
 -- A dollar-quoted spec can't reference session variables, so the spec is built
--- as a string inside a scripting block, with the real search-service FQN and
--- warehouse concatenated in. A literal double-dollar can't appear inside the
+-- as a string inside a scripting block, with the real search-service FQN
+-- concatenated in. A literal double-dollar can't appear inside the
 -- block (it would end it), so the spec delimiter is assembled at runtime.
 -- =============================================================================
 
@@ -264,7 +264,6 @@ $$
 DECLARE
     v_db VARCHAR;
     v_schema VARCHAR;
-    v_wh VARCHAR;
     v_agent_fqn VARCHAR;
     v_search_fqn VARCHAR;
     v_dq VARCHAR DEFAULT '$' || '$';
@@ -272,7 +271,6 @@ DECLARE
 BEGIN
     SELECT GETVARIABLE('TARGET_DATABASE') INTO v_db;
     SELECT GETVARIABLE('TARGET_SCHEMA') INTO v_schema;
-    SELECT GETVARIABLE('WAREHOUSE') INTO v_wh;
     SELECT GETVARIABLE('AGENT_NAME') INTO v_agent_fqn;
 
     v_agent_fqn  := v_db || '.' || v_schema || '.' || v_agent_fqn;
@@ -342,10 +340,6 @@ tool_resources:
         type: "string"
         searchable: true
         filterable: false
-
-execution_environment:
-  type: warehouse
-  warehouse: "' || v_wh || '"
 ' || v_dq;
     EXECUTE IMMEDIATE v_sql;
 END;

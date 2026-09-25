@@ -167,7 +167,8 @@ $$;
 -- =============================================================================
 
 SELECT GET_DDL('CORTEX_AGENT', $TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.' || $AGENT_NAME);
-SHOW AGENTS IN SCHEMA IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA);
+SET TARGET_SCHEMA_FQN = $TARGET_DATABASE || '.' || $TARGET_SCHEMA;
+SHOW AGENTS IN SCHEMA IDENTIFIER($TARGET_SCHEMA_FQN);
 
 -- =============================================================================
 -- Step 3: Register with Snowflake Intelligence (optional)

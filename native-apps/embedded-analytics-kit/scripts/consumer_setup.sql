@@ -30,6 +30,10 @@ SET WAREHOUSE = 'CORTEX';                          -- Warehouse for agent execut
 SET QLIK_MCP_SERVER = 'CORTEX_APP.PUBLIC.QLIK_MCP_SERVER';  -- Your Qlik MCP server FQN
 SET USER_ROLE = 'ACCOUNTADMIN';                    -- Role that will use the agent (prefer a non-admin role)
 
+-- IDENTIFIER() takes a literal or a bare variable, never a concatenation.
+SET AGENT_FQN     = $APP_NAME || '.CORE.ANALYTICS_AGENT';
+SET APP_USER_ROLE = $APP_NAME || '.APP_USER';
+
 -- =============================================================================
 -- Step 1: Grant Caller Privileges
 -- =============================================================================
@@ -137,7 +141,7 @@ mcp_servers:
 ';
 
     EXECUTE IMMEDIATE 'ALTER AGENT ' || v_agent
-        || ' MODIFY LIVE VERSION SET SPECIFICATION ' || v_dq || v_spec || v_dq;
+        || ' MODIFY LIVE VERSION SET SPECIFICATION = ' || v_dq || v_spec || v_dq;
 END;
 $$;
 
@@ -151,14 +155,14 @@ $$;
 -- Create the Intelligence object if it doesn't exist
 CREATE SNOWFLAKE INTELLIGENCE IF NOT EXISTS SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT;
 
-ALTER AGENT IDENTIFIER($APP_NAME || '.CORE.ANALYTICS_AGENT')
+ALTER AGENT IDENTIFIER($AGENT_FQN)
     SET PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';
 
 -- =============================================================================
 -- Step 4: Grant Access to User Roles
 -- =============================================================================
 
-GRANT APPLICATION ROLE IDENTIFIER($APP_NAME || '.APP_USER')
+GRANT APPLICATION ROLE IDENTIFIER($APP_USER_ROLE)
     TO ROLE IDENTIFIER($USER_ROLE);
 
 -- =============================================================================

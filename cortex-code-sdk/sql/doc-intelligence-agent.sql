@@ -60,7 +60,7 @@ USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 -- Step 1: Create the Document Intelligence Agent
 -- =============================================================================
 
-CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.DOC_INTELLIGENCE')
+CREATE OR REPLACE AGENT DOC_INTELLIGENCE
   COMMENT = 'Parses, extracts, and answers questions about documents using Cortex AI functions'
   PROFILE = '{"display_name": "Doc Intelligence", "color": "orange"}'
   FROM SPECIFICATION
@@ -157,7 +157,7 @@ CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || 
 -- Uncomment the following to make the agent available in the Snowflake
 -- Intelligence (CoWork) sidebar for interactive use.
 --
--- ALTER AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.DOC_INTELLIGENCE')
+-- ALTER AGENT DOC_INTELLIGENCE
 --   SET IS_COWORK_VISIBLE = TRUE;
 
 -- =============================================================================

@@ -29,7 +29,7 @@ SET TARGET_SCHEMA   = 'PUBLIC';
 USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
-CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.ACCESS_AUDIT_AGENT')
+CREATE OR REPLACE AGENT ACCESS_AUDIT_AGENT
   COMMENT = 'Audits access patterns for Qlik service accounts and recommends least-privilege adjustments'
   PROFILE = '{"display_name": "Access Audit", "color": "gray"}'
   FROM SPECIFICATION

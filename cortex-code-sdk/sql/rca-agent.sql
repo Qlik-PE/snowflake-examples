@@ -31,7 +31,7 @@ USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 
 -- Step 1: Create the agent
-CREATE OR REPLACE AGENT IDENTIFIER($TARGET_DATABASE || '.' || $TARGET_SCHEMA || '.RCA_AGENT')
+CREATE OR REPLACE AGENT RCA_AGENT
   COMMENT = 'Investigates Snowflake-side failures when a Qlik reload or CDC pipeline errors out'
   PROFILE = '{"display_name": "Failure RCA", "color": "red"}'
   FROM SPECIFICATION
