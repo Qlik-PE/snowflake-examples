@@ -1,6 +1,20 @@
 ---
 name: qlik-expression-authoring
-description: Write, review, and optimize Qlik Sense / Qlik Cloud chart expressions (set analysis, outer set expressions, dollar-sign expansion, Aggr, inter-record functions, master measures). Use for "write a Qlik expression", "review my Qlik measure", "why is this Qlik chart slow", "convert this IF to set analysis", "Qlik set analysis help", "qlik expression best practices".
+description: >-
+  Write, review, and optimize Qlik Sense / Qlik Cloud chart expressions (set analysis,
+  outer set expressions, dollar-sign expansion, Aggr, inter-record functions, master
+  measures). Use for "write a Qlik expression", "review my Qlik measure", "why is this
+  Qlik chart slow", "convert this IF to set analysis", "Qlik set analysis help",
+  "qlik expression best practices".
+license: Apache-2.0
+metadata:
+  author: cleveranjos
+  version: 1.1.0
+  tags:
+    - qlik
+    - set-analysis
+    - expressions
+    - performance
 ---
 
 # Authoring Qlik Expressions
@@ -58,6 +72,8 @@ Count(If(Status = 'Open', OrderID))          // avoid
 Count({<Status = {'Open'}>} OrderID)         // same result, set analysis
 Count({<Status = {'Open'}>} DISTINCT OrderID) // only if you actually want distinct orders
 ```
+
+> **Warning:** `Count(1)` is not a row count. It looks like SQL's `COUNT(*)`, but in Qlik it counts the literal `1` and returns 1, with no error. Use `Count(RecNo())` for an unconditional row count, or count a non-null key field (`Count(OrderID)`, `Count(DISTINCT OrderID)`).
 
 The exception: `If()` is fine **outside** the aggregation, where it runs once per chart row rather than once per data row.
 
@@ -122,6 +138,13 @@ Sum(Sales) / Sum({<Product = >} Total Sales)
 | `{'Nut', "*Bolt", Washer}` | Lists may mix literals and searches |
 
 Field names with spaces or special characters go in square brackets: `{<[Order Year] = {2026}>}`.
+
+Two traps that parse cleanly and return wrong numbers:
+
+- **Comparison in single quotes.** `{'>30'}` is a literal match for the text `>30`, so it silently returns nothing. Every comparison or range needs double quotes: `{">30"}`, `{">=30<100"}`.
+- **Whitespace after the operator.** Write `{">=30"}`, not `{">= 30"}`. A space changes how the value is parsed and can give wrong (not necessarily empty) results with no warning.
+
+**Verify values before filtering on them.** A set modifier on a value that doesn't exist returns nothing, without an error. Check the stored value first (a list box, a quick table, or the Qlik MCP `qlik_search_field_values` tool). Be most careful with names typed from memory: the field may store `American` or a code rather than `American Airlines`.
 
 **Implicit element lists** with `P()` and `E()` — retrieve values rather than hardcoding them. Use these instead of a self-join or a hardcoded list:
 
@@ -341,12 +364,13 @@ Sum(
 Never ship an expression on the basis that it parsed.
 
 1. **Reconcile against a known total.** Put the measure in a KPI with no selections and compare to a straight `Sum` on the source, or to the source system. A join fan-out shows up here and nowhere else.
-2. **Test the selection contract.** Make a selection on each field the expression modifies. Confirm it responds — or correctly does not — as designed.
-3. **Test the empty and single-value cases.** Zero rows, one row, a dimension value with no matching records, and a selection that empties a set used in an outer chain (Step 4). Guard division explicitly; do not rely on Qlik returning null politely.
-4. **Test at the boundary.** First and last period for inter-record functions; year boundary for date logic.
-5. **Drill and cycle.** If the chart has a drill-down group, confirm `Aggr()` and inter-record expressions still hold.
-6. **Check the expansion preview.** Confirm every `$(…)` expands to what you expect under a few different selections.
-7. **Time it.** Open the sheet cold with no selections, then with a heavy selection. If the calculating indicator lingers, return to Step 1 — something belongs in the script.
+2. **Confirm filter values exist.** Every literal in a set modifier must match a stored value exactly.
+3. **Test the selection contract.** Make a selection on each field the expression modifies. Confirm it responds — or correctly does not — as designed.
+4. **Test the empty and single-value cases.** Zero rows, one row, a dimension value with no matching records, and a selection that empties a set used in an outer chain (Step 4). Guard division explicitly; do not rely on Qlik returning null politely.
+5. **Test at the boundary.** First and last period for inter-record functions; year boundary for date logic.
+6. **Drill and cycle.** If the chart has a drill-down group, confirm `Aggr()` and inter-record expressions still hold.
+7. **Check the expansion preview.** Confirm every `$(…)` expands to what you expect under a few different selections.
+8. **Time it.** Open the sheet cold with no selections, then with a heavy selection. If the calculating indicator lingers, return to Step 1 — something belongs in the script.
 
 ## Performance Checklist
 
@@ -369,6 +393,9 @@ Work down this list when a sheet is slow; the top items pay off most.
 |---|---|---|
 | Date filter returns nothing, no syntax error | Search string not in the field's display format | Build the boundary with `Date(…)` in the field's format, or filter on a numeric date key |
 | Number too low / too high but plausible | Wrong quote type: `{'…'}` vs `{"…"}` | Single = case-sensitive literal, double = case-insensitive search/comparison |
+| Range filter returns nothing | Comparison in single quotes (`{'>30'}`), or a space after the operator (`{">= 30"}`) | `{">30"}`, `{">=30<100"}` — double quotes, no spaces |
+| Filter on a name returns nothing | The stored value differs from the typed one (`American` vs `American Airlines`) | Look up the actual field value before filtering |
+| Row count shows 1 | `Count(1)` counts the literal `1` | `Count(RecNo())` or `Count(KeyField)` |
 | Measure inflated | Expression at the wrong grain, join fan-out | Move measure to the table owning the grain |
 | Rewrite of `Count(If(…))` gives a smaller number | `DISTINCT` added during the rewrite | Keep `DISTINCT` only if the original meant it |
 | `$(=…)` returns null | Expansion yielded multiple values | Wrap in `Only()`, `Max()`, or `Concat()` |
@@ -392,7 +419,8 @@ Work down this list when a sheet is slow; the top items pay off most.
 - [ ] Set analysis used in place of `If()` inside aggregations, with identical semantics
 - [ ] Repeated inner scopes collapsed into an outer set expression where it aids readability
 - [ ] Chained set expressions checked for implicit clearing; `&` flag applied where an empty set must survive
-- [ ] Date boundaries match the field's format (or use a numeric date key); correct quote type throughout
+- [ ] Date boundaries match the field's format (or use a numeric date key); correct quote type throughout; comparisons double-quoted with no spaces
+- [ ] Every filter literal confirmed to exist in the data
 - [ ] `Aggr()` justified, grain fully specified, not nested
 - [ ] Promoted to a master measure if used more than once; business-friendly name distinct from field names
 - [ ] Formatted multi-line with comments (and no `//` comments inside variables used in expansions)

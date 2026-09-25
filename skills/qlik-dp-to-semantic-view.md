@@ -1,3 +1,23 @@
+---
+name: qlik-dp-to-semantic-view
+description: >-
+  Convert a Qlik Talend Cloud Data Product into a Snowflake Semantic View, preserving
+  governed metadata (descriptions, glossary definitions, relationships, trust scores) as
+  semantic-view comments, metrics and relationships. Use for "convert data product to
+  semantic view", "make this data product AI-ready in Snowflake", "build a semantic view
+  from Qlik", "qlik dp to semantic view". Requires the Qlik MCP server and Snowflake SQL access.
+license: Apache-2.0
+metadata:
+  author: cleveranjos
+  version: 1.0.0
+  tags:
+    - qlik
+    - snowflake
+    - semantic-view
+    - data-products
+    - cortex-analyst
+---
+
 # Qlik Data Product to Snowflake Semantic View
 
 Convert a Qlik Talend Cloud Data Product into a Snowflake semantic view, end to end, preserving governed metadata (descriptions, glossary definitions, trust scores) as first-class semantic metadata.
