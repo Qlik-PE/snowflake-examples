@@ -1,0 +1,8 @@
+# Lint config for the Python examples (see .github/workflows/lint.yml)
+line-length = 110
+extend-exclude = [".cortex"]
+
+[lint]
+# Pyflakes (undefined names, unused imports) and syntax errors only; the
+# examples favour readability over strict style.
+select = ["F", "E9"]
