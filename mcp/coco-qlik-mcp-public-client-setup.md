@@ -87,10 +87,10 @@ cortex mcp list
 cortex mcp get qlik
 ```
 
-`cortex mcp get qlik` should show:
-- `Status: Connected`
-- `Client ID:` matching the new public client
-- `Tools: Valid: <nonzero>`
+`cortex mcp get qlik` shows the stored config (it does not report connection
+status or tool counts). Check that it shows:
+- `Type: http` and the tenant's `/api/ai/mcp` URL
+- `OAuth:` with `Client ID:` matching the new public client and `Redirect Port: 8585`
 - No `client_secret` reference anywhere in output
 
 Inside a CoCo session:
@@ -99,7 +99,7 @@ Inside a CoCo session:
 /mcp
 ```
 
-should show `qlik` as `connected` with its tool count. Test with a real call, e.g. `mcp__qlik__list_apps`.
+should show `qlik` as `connected` with its tool count. Test with a real call, e.g. `mcp__qlik__apps__list` (tools are named `mcp__<server-name>__<qlik-tool>`, so the prefix follows the name you gave the server).
 
 ---
 

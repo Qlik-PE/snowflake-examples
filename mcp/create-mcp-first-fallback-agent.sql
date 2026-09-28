@@ -37,7 +37,7 @@ USE ROLE ACCOUNTADMIN;
 -- =============================================================================
 
 -- Target location for the agent
-SET TARGET_DATABASE    = 'CORTEX_DEMOS';
+SET TARGET_DATABASE    = '<your-database>';
 SET TARGET_SCHEMA      = 'PUBLIC';
 SET AGENT_NAME         = 'MCP_FIRST_AGENT';
 SET AGENT_DISPLAY_NAME = 'MCP-First Analytics Agent';
@@ -47,7 +47,7 @@ SET QLIK_MCP_SERVER_FQN = 'QLIK_MCP_DB.PUBLIC.qlik_mcp_server';  -- Fully qualif
 SET QLIK_APP_ID         = '<your-qlik-app-id>';                    -- Qlik Cloud app ID to query
 
 -- Semantic View (fallback) configuration
-SET SEMANTIC_VIEW_FQN   = 'CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10'; -- Fully qualified semantic view
+SET SEMANTIC_VIEW_FQN   = '<your-database>.<your-schema>.<your-semantic-view>'; -- Fully qualified semantic view
 SET ANALYST_WAREHOUSE   = 'COMPUTE';                                             -- Warehouse for Cortex Analyst execution
 
 -- =============================================================================

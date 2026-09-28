@@ -52,7 +52,7 @@ USE ROLE ACCOUNTADMIN;
 -- =============================================================================
 
 -- Target location for the agent
-SET TARGET_DATABASE    = 'CORTEX_DEMOS';
+SET TARGET_DATABASE    = '<your-database>';
 SET TARGET_SCHEMA      = 'PUBLIC';
 SET AGENT_NAME         = 'MULTI_MCP_AGENT';
 SET AGENT_DISPLAY_NAME = 'Multi-MCP Agent';

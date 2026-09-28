@@ -24,9 +24,11 @@
 -- =============================================================================
 
 -- Step 0: Configuration
+SET TARGET_ROLE     = 'ACCOUNTADMIN';  -- needs CREATE AGENT + ACCOUNT_USAGE access
 SET TARGET_DATABASE = 'CORTEX_CODE';
 SET TARGET_SCHEMA   = 'PUBLIC';
 
+USE ROLE IDENTIFIER($TARGET_ROLE);
 USE DATABASE IDENTIFIER($TARGET_DATABASE);
 USE SCHEMA IDENTIFIER($TARGET_SCHEMA);
 

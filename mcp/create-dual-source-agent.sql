@@ -36,17 +36,17 @@ USE ROLE ACCOUNTADMIN;
 -- =============================================================================
 
 -- Target location for the agent
-SET TARGET_DATABASE    = 'CORTEX_DEMOS';
+SET TARGET_DATABASE    = '<your-database>';
 SET TARGET_SCHEMA      = 'PUBLIC';
-SET AGENT_NAME         = 'TPCH_SF10';
-SET AGENT_DISPLAY_NAME = 'TPCH_SF10';
+SET AGENT_NAME         = 'DUAL_SOURCE_AGENT';
+SET AGENT_DISPLAY_NAME = 'Dual-Source Analytics Agent';
 
 -- Qlik MCP configuration
 SET QLIK_MCP_SERVER_FQN = 'QLIK_MCP_DB.PUBLIC.qlik_mcp_server';  -- Fully qualified MCP server name
 SET QLIK_APP_ID         = '<your-qlik-app-id>';                    -- Qlik Cloud app ID to query
 
 -- Semantic View configuration
-SET SEMANTIC_VIEW_FQN   = 'CORTEX_DEMOS.PUBLIC.SNOWFLAKE_SAMPLE_DATATPCH_SF10'; -- Fully qualified semantic view
+SET SEMANTIC_VIEW_FQN   = '<your-database>.<your-schema>.<your-semantic-view>'; -- Fully qualified semantic view
 SET ANALYST_WAREHOUSE   = 'COMPUTE';                                             -- Warehouse for Cortex Analyst execution
 
 -- =============================================================================
@@ -111,11 +111,11 @@ BEGIN
         || '  orchestration: |\n'
         || '    You are a dual-source analytics agent with access to TWO data tools:\n'
         || '    1. Qlik MCP — connected to Qlik Cloud app ' || v_app_id || '\n'
-        || '    2. TPCH_SF10_Analyst — Snowflake Cortex Analyst semantic view over ' || v_semantic_view || '\n'
+        || '    2. Semantic_View_Analyst — Snowflake Cortex Analyst semantic view over ' || v_semantic_view || '\n'
         || '\n'
         || '    For EVERY user question, you MUST:\n'
         || '    1. First, attempt to answer using the Qlik MCP tools (scoped to app ' || v_app_id || ').\n'
-        || '    2. Then, answer the same question using TPCH_SF10_Analyst (semantic view).\n'
+        || '    2. Then, answer the same question using Semantic_View_Analyst (semantic view).\n'
         || '    3. Return ONLY the comparison table — never return raw data results.\n'
         || '\n'
         || '    Qlik MCP Tool Usage:\n'
@@ -151,13 +151,13 @@ BEGIN
         || 'tools:\n'
         || '  - tool_spec:\n'
         || '      type: "cortex_analyst_text_to_sql"\n'
-        || '      name: "TPCH_SF10_Analyst"\n'
+        || '      name: "Semantic_View_Analyst"\n'
         || '      description: "Answers questions about TPC-H SF10 structured data (customers, orders, lineitems, parts, suppliers, nations, regions) using the Snowflake semantic view with full relationship joins."\n'
         || 'mcp_servers:\n'
         || '  - server_spec:\n'
         || '      name: "' || v_mcp_server || '"\n'
         || 'tool_resources:\n'
-        || '  TPCH_SF10_Analyst:\n'
+        || '  Semantic_View_Analyst:\n'
         || '    semantic_view: "' || v_semantic_view || '"\n'
         || '    execution_environment:\n'
         || '      type: warehouse\n'

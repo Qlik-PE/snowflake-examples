@@ -229,7 +229,7 @@ ai_verified_queries (
 
 ### Step 10 — Validate and Verify
 
-1. **Dry run** — `SELECT SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(<yaml>, TRUE);` when going through YAML. Skip `reflect_semantic_model` for quoted-case sources; it reports false failures.
+1. **Dry run** — `CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML('<db>.<schema>', $$<yaml>$$, TRUE);` when going through YAML (the third argument is `verify_only`). Skip `reflect_semantic_model` for quoted-case sources; it reports false failures.
 2. **Create** the view.
 3. **Query it directly** — one metric crossed with one dimension per fact table.
 4. **Compare against the source** — the metric total from the semantic view must match a plain `SUM` against the physical table. This is what catches join fan-out.
