@@ -391,8 +391,9 @@ tool_resources:
     semantic_view: "core.saas_metrics_sv"
 
 # Note: The warehouse and MCP server are configured by the consumer via
-# consumer_setup.sql, which alters the agent spec after installation.
-# The consumer provides their own warehouse and Qlik MCP server FQN.
+# consumer_setup.sql, which calls core.configure_agent (below) to update
+# the agent spec after installation. The consumer never gets MODIFY on the
+# agent directly, so this owner's-rights procedure does it on their behalf.
 $$;
 
 GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;
@@ -401,3 +402,108 @@ GRANT USAGE ON AGENT core.analytics_agent TO APPLICATION ROLE app_user;
 ALTER AGENT core.analytics_agent SET
     COMMENT = 'SaaS analytics agent with Qlik Cloud + Snowflake data',
     PROFILE = '{"display_name": "SaaS Analytics Kit (Qlik + Snowflake)", "avatar": "SparklesAgentIcon"}';
+
+-- =============================================================================
+-- Agent Configuration Callback
+-- =============================================================================
+-- The application owns core.analytics_agent; a consumer role only ever gets
+-- USAGE on it (see grant above), never MODIFY. So the consumer cannot run
+-- ALTER AGENT themselves. This owner's-rights procedure does it for them:
+-- consumer_setup.sql calls it with the consumer's warehouse and Qlik MCP
+-- server FQN instead of altering the agent directly.
+-- =============================================================================
+
+CREATE OR REPLACE PROCEDURE core.configure_agent(p_warehouse STRING, p_mcp_server STRING)
+    RETURNS STRING
+    LANGUAGE SQL
+    EXECUTE AS OWNER
+AS
+$$
+DECLARE
+    v_spec VARCHAR;
+    -- The spec is dollar-quoted in the ALTER statement, but a literal
+    -- double-dollar anywhere in this body would end it early, so the
+    -- delimiter is assembled at runtime.
+    v_dq VARCHAR DEFAULT '$' || '$';
+    bad_input EXCEPTION (-20001, 'configure_agent: arguments must be plain or dot-qualified identifiers');
+BEGIN
+    -- Both values are pasted into SQL that runs with the app's rights, so
+    -- accept identifiers only (warehouse name, DB.SCHEMA.SERVER).
+    IF (NOT REGEXP_LIKE(p_warehouse, '^[A-Za-z_][A-Za-z0-9_$]*$')
+        OR NOT REGEXP_LIKE(p_mcp_server, '^[A-Za-z_][A-Za-z0-9_$]*([.][A-Za-z_][A-Za-z0-9_$]*){0,2}$')) THEN
+        RAISE bad_input;
+    END IF;
+
+    v_spec := '
+models:
+  orchestration: auto
+
+instructions:
+  response: |
+    You are an embedded analytics assistant for SaaS companies. You have access to:
+
+    1. **SaaS Metrics (Snowflake)** - Query subscription data, revenue metrics (MRR, ARR,
+       churn, NRR, expansion), account details, and usage analytics directly from Snowflake
+       via Cortex Analyst.
+
+    2. **Qlik Cloud Analytics** - Explore Qlik applications, dashboards, master items,
+       create visualizations, manage bookmarks, and investigate data using Qlik''s
+       associative engine.
+
+    ## When to use each tool:
+
+    **Use SaaS Metrics (Cortex Analyst) when:**
+    - User asks about specific metrics: MRR, ARR, churn, retention, revenue
+    - User wants data by segment, region, plan tier, time period
+    - User needs ad-hoc analysis or custom aggregations
+    - User asks "what is..." or "how much..." type questions about the data
+
+    **Use Qlik MCP tools when:**
+    - User asks about existing dashboards or visualizations
+    - User wants to create/modify charts or sheets
+    - User asks to explore apps or find specific Qlik content
+    - User wants governed master items (dimensions/measures)
+    - User asks "show me..." or "create a chart..." type requests
+
+    **Use both when:**
+    - User wants to analyze data AND visualize it
+    - User asks a metric question and wants a dashboard created
+    - User needs to compare Snowflake data with Qlik dashboard findings
+
+    ## Response guidelines:
+    - Be concise and data-driven
+    - When presenting metrics, include the time period and any filters applied
+    - When creating Qlik visualizations, confirm the app ID with the user first
+    - Format numbers clearly (e.g., $45,000 MRR, 95.2% NRR)
+
+  orchestration: |
+    Route questions about data metrics to SaaSMetrics.
+    Route questions about dashboards and visualizations to Qlik MCP tools.
+    For hybrid requests, query the data first, then create visualizations.
+
+tools:
+  - tool_spec:
+      type: "cortex_analyst_text_to_sql"
+      name: "SaaSMetrics"
+      description: "Query SaaS subscription metrics including MRR, ARR, churn rate, net revenue retention, expansion revenue, account details, usage patterns, and customer segments from Snowflake."
+
+tool_resources:
+  SaaSMetrics:
+    semantic_view: "core.saas_metrics_sv"
+    execution_environment:
+      type: warehouse
+      warehouse: "' || p_warehouse || '"
+
+mcp_servers:
+  - server_spec:
+      name: "' || p_mcp_server || '"
+';
+
+    EXECUTE IMMEDIATE 'ALTER AGENT core.analytics_agent MODIFY LIVE VERSION SET SPECIFICATION = '
+        || v_dq || v_spec || v_dq;
+    RETURN 'OK: agent configured with warehouse ' || p_warehouse || ' and MCP server ' || p_mcp_server;
+END;
+$$;
+
+GRANT USAGE ON PROCEDURE core.configure_agent(STRING, STRING)
+    TO APPLICATION ROLE app_user;

@@ -43,6 +43,7 @@ All objects are created in the app's `CORE` schema by `setup_script.sql`:
 | Semantic View | `SAAS_METRICS_SV` | Cortex Analyst text-to-SQL over the tables |
 | Cortex Agent | `ANALYTICS_AGENT` | Shown as **"SaaS Analytics Kit (Qlik + Snowflake)"** |
 | Procedure | `REGISTER_REFERENCE` | Callback for the consumer warehouse reference in `manifest.yml` |
+| Procedure | `CONFIGURE_AGENT` | Owner's-rights callback consumer_setup.sql calls to wire the consumer's warehouse and Qlik MCP server into the agent (the consumer only ever holds `USAGE` on the agent, never `MODIFY`) |
 
 ### Sample data
 
@@ -97,9 +98,9 @@ CREATE APPLICATION EMBEDDED_ANALYTICS_KIT
 Edit the `SET` block in [`scripts/consumer_setup.sql`](scripts/consumer_setup.sql) (`APP_NAME`, `WAREHOUSE`, `QLIK_MCP_SERVER`, `USER_ROLE`) and run it. The script:
 
 1. grants the app caller `USAGE` on your warehouse and your Qlik MCP server,
-2. replaces the agent specification with one that adds your warehouse (for Cortex Analyst) and your Qlik MCP server (`mcp_servers`),
-3. sets the agent's Snowflake Intelligence profile,
-4. grants `APP_USER` to your role,
+2. grants `APP_USER` to your role (needed before the next step calls a procedure owned by the app),
+3. calls the app's `core.configure_agent` procedure, which adds your warehouse (for Cortex Analyst) and your Qlik MCP server (`mcp_servers`) to the agent spec — done as an owner's-rights callback because the consumer only ever holds `USAGE` on the agent, never `MODIFY`,
+4. creates the Snowflake Intelligence object, if it doesn't exist yet (the agent's profile is already set at install time),
 5. runs a test question.
 
 ### 3. Authenticate with Qlik
