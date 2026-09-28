@@ -25,17 +25,10 @@ Usage:
 """
 
 import argparse
-import asyncio
-import json
-import sys
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    query,
-    AssistantMessage,
-    ResultMessage,
-    CortexCodeAgentOptions,
-)
+
+from _common import make_options, print_report, run_main, run_structured, EXIT_FINDINGS
 
 # ---------------------------------------------------------------------------
 # Structured output schema (Pydantic → JSON Schema)
@@ -105,41 +98,18 @@ Investigation steps:
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(warehouse: str, minutes: int, error_hint: str) -> None:
-    prompt = build_prompt(warehouse, minutes, error_hint)
-    output_schema = RCAReport.model_json_schema()
-
-    print(f"Launching CoCo agent session...")
+async def run(warehouse: str, minutes: int, error_hint: str) -> int | None:
+    print("Launching CoCo agent session...")
     print(f"  warehouse={warehouse}  window={minutes}m  hint=\"{error_hint}\"\n")
 
-    async for message in query(
-        prompt=prompt,
-        options=CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-            max_turns=15,
-        ),
-    ):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text, end="")
-
-        elif isinstance(message, ResultMessage):
-            print(f"\n\n--- Agent finished (turns={message.num_turns}, "
-                  f"duration={message.duration_ms}ms) ---")
-            if message.is_error:
-                print(f"Agent error: {message.subtype}")
-                return
-
-            if message.structured_output:
-                report = RCAReport.model_validate(message.structured_output)
-                print("\n========== STRUCTURED RCA REPORT ==========")
-                print(json.dumps(report.model_dump(), indent=2))
-            else:
-                print("\nNo structured output returned.")
+    report = await run_structured(
+        build_prompt(warehouse, minutes, error_hint),
+        RCAReport,
+        make_options(SYSTEM_PROMPT, max_turns=15),
+    )
+    print_report("STRUCTURED RCA REPORT", report)
+    if report.severity.lower() in ("high", "critical"):
+        return EXIT_FINDINGS
 
 
 def main():
@@ -152,7 +122,7 @@ def main():
                         help="Error hint from the Qlik alert")
     args = parser.parse_args()
 
-    asyncio.run(run(args.warehouse, args.minutes, args.error))
+    run_main(lambda: run(args.warehouse, args.minutes, args.error))
 
 
 if __name__ == "__main__":

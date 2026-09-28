@@ -16,18 +16,12 @@ Usage:
 """
 
 import argparse
-import asyncio
 import json
-import sys
-from datetime import datetime, timezone
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    CortexCodeSDKClient,
-    CortexCodeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-    HookMatcher,
+
+from _common import (
+    make_options, print_report, run_main, run_multi_turn, sql_audit_hooks, EXIT_FINDINGS,
 )
 
 # ---------------------------------------------------------------------------
@@ -67,25 +61,9 @@ class AccessAuditReport(BaseModel):
     anomalies: list[AccessAnomaly]
     recommendations: list[LeastPrivilegeAction]
 
-# ---------------------------------------------------------------------------
-# Audit hook
-# ---------------------------------------------------------------------------
-
+# Audit log: every SQL statement is recorded before the agent runs it (see
+# _common.sql_audit_hooks).
 SQL_AUDIT_LOG: list[dict] = []
-
-async def audit_sql_hook(input_data, tool_use_id, context):
-    # Only SQL tool calls are logged. NOTE: the bundled SDK docs name this tool
-    # "SQL" (as in allowed_tools); check which name your SDK version reports,
-    # otherwise the audit log stays empty.
-    if input_data.get("tool_name") == "sql_execute":
-        sql = input_data.get("tool_input", {}).get("sql", "")
-        SQL_AUDIT_LOG.append({
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool_use_id": tool_use_id,
-            "sql": sql[:500],
-        })
-        print(f"  [AUDIT] {sql[:80]}...", file=sys.stderr)
-    return {"continue_": True}
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -159,84 +137,29 @@ Produce the final structured JSON output with:
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(role: str, user: str, days: int) -> None:
-    output_schema = AccessAuditReport.model_json_schema()
-
+async def run(role: str, user: str, days: int) -> int | None:
     print("Launching CoCo access audit agent (multi-turn)...")
     print(f"  role={role}  user={user}  period={days}d\n")
 
-    hook_config = {
-        "PreToolUse": [
-            HookMatcher(
-                matcher=None,
-                hooks=[audit_sql_hook],
-                timeout=10.0,
-            ),
-        ],
-    }
-
-    async with CortexCodeSDKClient(
-        CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            hooks=hook_config,
+    try:
+        report = await run_multi_turn(
+            turns=[("Inventorying grants", build_inventory_prompt(role, user))],
+            final=("Analyzing usage and producing recommendations",
+                   build_usage_prompt(role, user, days)),
+            model=AccessAuditReport,
+            options=make_options(SYSTEM_PROMPT, hooks=sql_audit_hooks(SQL_AUDIT_LOG)),
         )
-    ) as client:
-        # --- Turn 1: Inventory grants ---
-        print("=== Turn 1: Inventorying grants ===\n")
-        await client.query(build_inventory_prompt(role, user))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (turn 1 done, {msg.num_turns} agent turns)\n")
-
-        # --- Turn 2: Cross-reference with usage and produce report ---
-        print("=== Turn 2: Analyzing usage and producing recommendations ===\n")
-
-        # Turn 2 needs structured output, but options are fixed when the client is
-        # created and the SDK has no public setter, so this swaps the private
-        # _options attribute. If the running session ignores it, the result has no
-        # structured_output and the script prints "No structured output returned."
-        client._options = CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-            hooks=hook_config,
-        )
-
-        await client.query(build_usage_prompt(role, user, days))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n\n--- Agent finished (turns={msg.num_turns}, "
-                      f"duration={msg.duration_ms}ms) ---")
-                if msg.is_error:
-                    print(f"Agent error: {msg.subtype}")
-                    return
-
-                if msg.structured_output:
-                    report = AccessAuditReport.model_validate(msg.structured_output)
-                    print("\n========== ACCESS AUDIT REPORT ==========")
-                    print(json.dumps(report.model_dump(), indent=2))
-
-                    if report.anomaly_count > 0:
-                        print(f"\n*** {report.anomaly_count} anomaly(ies) detected ***")
-                    print(f"Grants: {report.total_grants} total, "
-                          f"{report.used_grants} used, {report.unused_grants} unused")
-                else:
-                    print("\nNo structured output returned.")
-
+    finally:
         if SQL_AUDIT_LOG:
             print(f"\n========== SQL AUDIT LOG ({len(SQL_AUDIT_LOG)} queries) ==========")
             print(json.dumps(SQL_AUDIT_LOG, indent=2))
+
+    print_report("ACCESS AUDIT REPORT", report)
+    print(f"Grants: {report.total_grants} total, "
+          f"{report.used_grants} used, {report.unused_grants} unused")
+    if report.anomaly_count > 0:
+        print(f"\n*** {report.anomaly_count} anomaly(ies) detected ***")
+        return EXIT_FINDINGS
 
 
 def main():
@@ -249,7 +172,7 @@ def main():
                         help="Lookback period in days (default: 30)")
     args = parser.parse_args()
 
-    asyncio.run(run(args.role, args.user, args.days))
+    run_main(lambda: run(args.role, args.user, args.days))
 
 
 if __name__ == "__main__":

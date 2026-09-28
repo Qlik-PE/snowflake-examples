@@ -16,16 +16,10 @@ Usage:
 """
 
 import argparse
-import asyncio
-import json
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    CortexCodeSDKClient,
-    CortexCodeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-)
+
+from _common import make_options, print_report, run_main, run_multi_turn, EXIT_FINDINGS
 
 # ---------------------------------------------------------------------------
 # Structured output schema
@@ -118,67 +112,21 @@ ALTER TASK SET SCHEDULE).
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(database: str, schema: str, sla_hours: float, tag: str) -> None:
-    output_schema = FreshnessReport.model_json_schema()
-
+async def run(database: str, schema: str, sla_hours: float, tag: str) -> int | None:
     print("Launching CoCo data freshness SLA monitor (multi-turn)...")
     print(f"  target={database}.{schema}  SLA={sla_hours}h  tag={tag or '(all)'}\n")
 
-    async with CortexCodeSDKClient(
-        CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-        )
-    ) as client:
-        # --- Turn 1: Discover tables and measure freshness ---
-        print("=== Turn 1: Discovering tables and measuring freshness ===\n")
-        await client.query(build_discover_prompt(database, schema, sla_hours, tag))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (turn 1 done, {msg.num_turns} agent turns)\n")
-
-        # --- Turn 2: Diagnose root causes and produce structured output ---
-        print("=== Turn 2: Diagnosing SLA violations ===\n")
-
-        # Turn 2 needs structured output, but options are fixed when the client is
-        # created and the SDK has no public setter, so this swaps the private
-        # _options attribute. If the running session ignores it, the result has no
-        # structured_output and the script prints "No structured output returned."
-        client._options = CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-        )
-
-        await client.query(build_diagnose_prompt(database, schema))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n\n--- Agent finished (turns={msg.num_turns}, "
-                      f"duration={msg.duration_ms}ms) ---")
-                if msg.is_error:
-                    print(f"Agent error: {msg.subtype}")
-                    return
-
-                if msg.structured_output:
-                    report = FreshnessReport.model_validate(msg.structured_output)
-                    print("\n========== FRESHNESS REPORT ==========")
-                    print(json.dumps(report.model_dump(), indent=2))
-
-                    violations = report.tables_violating_sla
-                    if violations > 0:
-                        print(f"\n*** {violations} table(s) violating SLA ***")
-                else:
-                    print("\nNo structured output returned.")
+    report = await run_multi_turn(
+        turns=[("Discovering tables and measuring freshness",
+                build_discover_prompt(database, schema, sla_hours, tag))],
+        final=("Diagnosing SLA violations", build_diagnose_prompt(database, schema)),
+        model=FreshnessReport,
+        options=make_options(SYSTEM_PROMPT),
+    )
+    print_report("FRESHNESS REPORT", report)
+    if report.tables_violating_sla > 0:
+        print(f"\n*** {report.tables_violating_sla} table(s) violating SLA ***")
+        return EXIT_FINDINGS
 
 
 def main():
@@ -193,7 +141,7 @@ def main():
                         help="Optional Snowflake tag to filter tables (e.g. QLIK_MANAGED)")
     args = parser.parse_args()
 
-    asyncio.run(run(args.database, args.schema, args.sla_hours, args.tag))
+    run_main(lambda: run(args.database, args.schema, args.sla_hours, args.tag))
 
 
 if __name__ == "__main__":

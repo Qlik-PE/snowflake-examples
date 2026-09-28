@@ -14,16 +14,10 @@ Usage:
 """
 
 import argparse
-import asyncio
-import json
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    CortexCodeSDKClient,
-    CortexCodeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-)
+
+from _common import make_options, print_report, run_main, run_multi_turn
 
 # ---------------------------------------------------------------------------
 # Structured output schema
@@ -105,62 +99,17 @@ Then produce the final structured JSON output with:
 # ---------------------------------------------------------------------------
 
 async def run(semantic_view: str, expected_fields: str) -> None:
-    output_schema = DriftReport.model_json_schema()
-
     print("Launching CoCo semantic drift checker (multi-turn)...")
     print(f"  semantic_view={semantic_view}\n")
 
-    async with CortexCodeSDKClient(
-        CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-        )
-    ) as client:
-        # --- Turn 1: Discover and compare ---
-        print("=== Turn 1: Discovering semantic view and detecting drift ===\n")
-        await client.query(build_discover_prompt(semantic_view, expected_fields))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (turn 1 done, {msg.num_turns} agent turns)\n")
-
-        # --- Turn 2: Validate verified queries and produce structured output ---
-        print("=== Turn 2: Validating verified queries ===\n")
-
-        # Turn 2 needs structured output, but options are fixed when the client is
-        # created and the SDK has no public setter, so this swaps the private
-        # _options attribute. If the running session ignores it, the result has no
-        # structured_output and the script prints "No structured output returned."
-        client._options = CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-        )
-
-        await client.query(VALIDATE_PROMPT)
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n\n--- Agent finished (turns={msg.num_turns}, "
-                      f"duration={msg.duration_ms}ms) ---")
-                if msg.is_error:
-                    print(f"Agent error: {msg.subtype}")
-                    return
-
-                if msg.structured_output:
-                    report = DriftReport.model_validate(msg.structured_output)
-                    print("\n========== DRIFT REPORT ==========")
-                    print(json.dumps(report.model_dump(), indent=2))
-                else:
-                    print("\nNo structured output returned.")
+    report = await run_multi_turn(
+        turns=[("Discovering semantic view and detecting drift",
+                build_discover_prompt(semantic_view, expected_fields))],
+        final=("Validating verified queries", VALIDATE_PROMPT),
+        model=DriftReport,
+        options=make_options(SYSTEM_PROMPT),
+    )
+    print_report("DRIFT REPORT", report)
 
 
 def main():
@@ -172,7 +121,7 @@ def main():
                              "(e.g. 'revenue:NUMBER,customer_id:VARCHAR')")
     args = parser.parse_args()
 
-    asyncio.run(run(args.semantic_view, args.expected_fields))
+    run_main(lambda: run(args.semantic_view, args.expected_fields))
 
 
 if __name__ == "__main__":

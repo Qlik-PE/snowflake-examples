@@ -17,18 +17,12 @@ Usage:
 """
 
 import argparse
-import asyncio
-import json
 import sys
 from pathlib import Path
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    CortexCodeSDKClient,
-    CortexCodeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
-)
+
+from _common import make_options, print_report, run_main, run_multi_turn
 
 # ---------------------------------------------------------------------------
 # Structured output schema
@@ -139,65 +133,19 @@ Produce the final structured JSON output.
 # ---------------------------------------------------------------------------
 
 async def run(query_sql: str, warehouse: str) -> None:
-    output_schema = OptimizationReport.model_json_schema()
-
     print("Launching CoCo SQL optimizer agent (multi-turn)...")
     print(f"  query length={len(query_sql)} chars  warehouse={warehouse or '(none)'}\n")
 
-    async with CortexCodeSDKClient(
-        CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-        )
-    ) as client:
-        # --- Turn 1: Analyze the query ---
-        print("=== Turn 1: Analyzing query for issues and opportunities ===\n")
-        await client.query(build_analyze_prompt(query_sql, warehouse))
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (turn 1 done, {msg.num_turns} agent turns)\n")
-
-        # --- Turn 2: Rewrite and produce structured output ---
-        print("=== Turn 2: Rewriting and optimizing ===\n")
-
-        # Turn 2 needs structured output, but options are fixed when the client is
-        # created and the SDK has no public setter, so this swaps the private
-        # _options attribute. If the running session ignores it, the result has no
-        # structured_output and the script prints "No structured output returned."
-        client._options = CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-        )
-
-        await client.query(REWRITE_PROMPT)
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n\n--- Agent finished (turns={msg.num_turns}, "
-                      f"duration={msg.duration_ms}ms) ---")
-                if msg.is_error:
-                    print(f"Agent error: {msg.subtype}")
-                    return
-
-                if msg.structured_output:
-                    report = OptimizationReport.model_validate(msg.structured_output)
-                    print("\n========== OPTIMIZATION REPORT ==========")
-                    print(json.dumps(report.model_dump(), indent=2))
-
-                    print(f"\n--- Optimized Query ---\n")
-                    print(report.optimized_query)
-                else:
-                    print("\nNo structured output returned.")
+    report = await run_multi_turn(
+        turns=[("Analyzing query for issues and opportunities",
+                build_analyze_prompt(query_sql, warehouse))],
+        final=("Rewriting and optimizing", REWRITE_PROMPT),
+        model=OptimizationReport,
+        options=make_options(SYSTEM_PROMPT),
+    )
+    print_report("OPTIMIZATION REPORT", report)
+    print("\n--- Optimized Query ---\n")
+    print(report.optimized_query)
 
 
 def main():
@@ -222,7 +170,7 @@ def main():
         print("Error: empty query", file=sys.stderr)
         sys.exit(1)
 
-    asyncio.run(run(query_sql, args.warehouse))
+    run_main(lambda: run(query_sql, args.warehouse))
 
 
 if __name__ == "__main__":

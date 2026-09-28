@@ -1,0 +1,2 @@
+cortex-code-agent-sdk>=1.0.7
+pydantic>=2.0

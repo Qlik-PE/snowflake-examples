@@ -11,16 +11,10 @@ Usage:
 """
 
 import argparse
-import asyncio
-import json
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    query,
-    AssistantMessage,
-    ResultMessage,
-    CortexCodeAgentOptions,
-)
+
+from _common import make_options, print_report, run_main, run_structured
 
 # ---------------------------------------------------------------------------
 # Structured output schema
@@ -93,40 +87,15 @@ Steps:
 # ---------------------------------------------------------------------------
 
 async def run(days: int, user: str, warehouse: str) -> None:
-    prompt = build_prompt(days, user, warehouse)
-    output_schema = CostReport.model_json_schema()
-
     print("Launching CoCo cost attribution agent...")
     print(f"  period={days}d  user={user}  warehouse={warehouse}\n")
 
-    async for message in query(
-        prompt=prompt,
-        options=CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-            max_turns=15,
-        ),
-    ):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text, end="")
-
-        elif isinstance(message, ResultMessage):
-            print(f"\n\n--- Agent finished (turns={message.num_turns}, "
-                  f"duration={message.duration_ms}ms) ---")
-            if message.is_error:
-                print(f"Agent error: {message.subtype}")
-                return
-
-            if message.structured_output:
-                report = CostReport.model_validate(message.structured_output)
-                print("\n========== COST ATTRIBUTION REPORT ==========")
-                print(json.dumps(report.model_dump(), indent=2))
-            else:
-                print("\nNo structured output returned.")
+    report = await run_structured(
+        build_prompt(days, user, warehouse),
+        CostReport,
+        make_options(SYSTEM_PROMPT, max_turns=15),
+    )
+    print_report("COST ATTRIBUTION REPORT", report)
 
 
 def main():
@@ -139,7 +108,7 @@ def main():
                         help="Warehouse to filter on (default: all)")
     args = parser.parse_args()
 
-    asyncio.run(run(args.days, args.user, args.warehouse))
+    run_main(lambda: run(args.days, args.user, args.warehouse))
 
 
 if __name__ == "__main__":

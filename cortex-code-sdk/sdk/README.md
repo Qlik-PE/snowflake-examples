@@ -15,8 +15,11 @@ the two approaches, see the [parent README](../README.md).
 cd cortex-code-sdk/sdk
 python3 -m venv .venv
 source .venv/bin/activate
-pip install cortex-code-agent-sdk pydantic
+pip install -r requirements.txt
 ```
+
+Every script imports the shared helpers in [`_common.py`](_common.py), so run
+them from this folder.
 
 The SDK requires the [Cortex Code CLI](https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-cli)
 on your `PATH`. If it is installed elsewhere, set `CORTEX_CODE_CLI_PATH=/path/to/cortex`.
@@ -599,6 +602,23 @@ Every prototype also exists as a SQL `CREATE AGENT` in [`../sql/`](../sql/). It 
 entirely inside Snowflake and can be called from Qlik Automate or any HTTP
 client. See the [parent README](../README.md#python-sdk-vs-sql-agent) for a
 side-by-side comparison.
+
+## Shared helpers and exit codes
+
+[`_common.py`](_common.py) holds the plumbing every prototype shares:
+
+- `run_structured()`: a single-shot `query()` that streams text and returns a validated Pydantic model.
+- `run_multi_turn()`: runs the free-form investigation turns in a `CortexCodeSDKClient` session, then *resumes that session* (`query(resume=session_id)`) for the final turn with `output_format` set. Options are fixed on a live client, so this is how the final turn gets structured output while keeping the full conversation and tool results.
+- `sql_audit_hooks()`: the `PreToolUse` SQL audit log used by Pre-Flight and Access Audit.
+- `run_main()`: maps outcomes to exit codes so the scripts can gate cron jobs and CI.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Report produced, nothing needs attention |
+| `1` | Agent, SDK or CLI error |
+| `2` | Agent finished without valid structured output |
+| `3` | Report flags findings: RCA severity high/critical, Pre-Flight `NO_GO`, SLA violations, access anomalies |
+| `130` | Interrupted |
 
 ## SDK feature coverage across prototypes
 

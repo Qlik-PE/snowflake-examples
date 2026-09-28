@@ -160,23 +160,21 @@ async for message in query(
 
 The optimizer uses a two-turn pattern. Turn 1 analyzes anti-patterns without rewriting. Turn 2 produces the optimized query with structured output.
 
+Options are fixed on a live `CortexCodeSDKClient`, so `run_multi_turn()` in `sdk/_common.py` runs turn 1 in a client session and then resumes that session with `output_format` set:
+
 ```python
-async with CortexCodeSDKClient(
-    CortexCodeAgentOptions(cwd=".", allowed_tools=["SQL"], system_prompt=OPTIMIZER_SYSTEM_PROMPT)
-) as client:
-    # Turn 1: analyze
+async with CortexCodeSDKClient(options) as client:
+    # Turn 1: analyze (free-form)
     await client.query(analyze_prompt)
     async for msg in client.receive_response():
-        ...
+        if isinstance(msg, ResultMessage):
+            session_id = msg.session_id
 
-    # Turn 2: rewrite with structured output
-    client._options = CortexCodeAgentOptions(
-        ...,
-        output_format={"type": "json_schema", "schema": schema},
-    )
-    await client.query(rewrite_prompt)
-    async for msg in client.receive_response():
-        ...
+# Turn 2: resume the same session with structured output
+options.resume = session_id
+options.output_format = {"type": "json_schema", "schema": OptimizationReport.model_json_schema()}
+async for msg in query(prompt=rewrite_prompt, options=options):
+    ...
 ```
 
 ## What the Optimizer Should Find
@@ -199,7 +197,7 @@ When the SQL Optimizer agent processes this query, it should identify and fix th
 ### Prerequisites
 
 ```bash
-pip install cortex-code-agent-sdk pydantic
+pip install -r sdk/requirements.txt
 ```
 
 Cortex Code CLI must be authenticated against a Snowflake account with access to `SNOWFLAKE_SAMPLE_DATA.TPCH_SF100`.
@@ -339,7 +337,7 @@ The script produces console output for each step:
 | `max_turns` | Cost agent (15), query executor (5) |
 | Pydantic validation | `CostReport`, `OptimizationReport` |
 | EXPLAIN plan analysis | Optimizer turn 1 |
-| Multi-turn option switching | Optimizer (turn 1 no schema → turn 2 with schema) |
+| Session resume with structured output | Optimizer (turn 1 no schema → resumed turn 2 with schema) |
 
 ---
 

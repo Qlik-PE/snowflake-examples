@@ -17,18 +17,12 @@ Usage:
 """
 
 import argparse
-import asyncio
 import json
-import sys
-from datetime import datetime, timezone
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    query,
-    AssistantMessage,
-    ResultMessage,
-    CortexCodeAgentOptions,
-    HookMatcher,
+
+from _common import (
+    make_options, print_report, run_main, run_structured, sql_audit_hooks, EXIT_FINDINGS,
 )
 
 # ---------------------------------------------------------------------------
@@ -73,27 +67,10 @@ class PreFlightReport(BaseModel):
     dynamic_table_checks: list[DynamicTableCheck]
     remediations: list[RemediationAction]
 
-# ---------------------------------------------------------------------------
-# Audit hook — records every SQL statement before the agent runs it.
-# Each call is printed to stderr immediately; the full log is printed at the end.
-# ---------------------------------------------------------------------------
-
+# Audit log: every SQL statement is recorded before the agent runs it (see
+# _common.sql_audit_hooks). Each call is printed to stderr as it happens and the
+# full log is printed at the end.
 SQL_AUDIT_LOG: list[dict] = []
-
-async def audit_sql_hook(input_data, tool_use_id, context):
-    # Only SQL tool calls are logged. NOTE: the bundled SDK docs name this tool
-    # "SQL" (as in allowed_tools); check which name your SDK version reports,
-    # otherwise the audit log stays empty.
-    if input_data.get("tool_name") == "sql_execute":
-        sql = input_data.get("tool_input", {}).get("sql", "")
-        entry = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool_use_id": tool_use_id,
-            "sql": sql[:500],
-        }
-        SQL_AUDIT_LOG.append(entry)
-        print(f"  [AUDIT] {sql[:80]}...", file=sys.stderr)
-    return {"continue_": True}
 
 # ---------------------------------------------------------------------------
 # Prompts
@@ -135,54 +112,24 @@ Steps:
 # Main
 # ---------------------------------------------------------------------------
 
-async def run(database: str, schema: str, role: str, warehouse: str) -> None:
-    prompt = build_prompt(database, schema, role, warehouse)
-    output_schema = PreFlightReport.model_json_schema()
-
+async def run(database: str, schema: str, role: str, warehouse: str) -> int | None:
     print("Launching CoCo pre-flight validator...")
     print(f"  target={database}.{schema}  role={role}  warehouse={warehouse}\n")
 
-    async for message in query(
-        prompt=prompt,
-        options=CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": output_schema},
-            max_turns=20,
-            hooks={
-                "PreToolUse": [
-                    HookMatcher(
-                        matcher=None,
-                        hooks=[audit_sql_hook],
-                        timeout=10.0,
-                    ),
-                ],
-            },
-        ),
-    ):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text, end="")
+    try:
+        report = await run_structured(
+            build_prompt(database, schema, role, warehouse),
+            PreFlightReport,
+            make_options(SYSTEM_PROMPT, max_turns=20, hooks=sql_audit_hooks(SQL_AUDIT_LOG)),
+        )
+    finally:
+        if SQL_AUDIT_LOG:
+            print(f"\n========== SQL AUDIT LOG ({len(SQL_AUDIT_LOG)} queries) ==========")
+            print(json.dumps(SQL_AUDIT_LOG, indent=2))
 
-        elif isinstance(message, ResultMessage):
-            print(f"\n\n--- Agent finished (turns={message.num_turns}, "
-                  f"duration={message.duration_ms}ms) ---")
-            if message.is_error:
-                print(f"Agent error: {message.subtype}")
-                return
-
-            if message.structured_output:
-                report = PreFlightReport.model_validate(message.structured_output)
-                print("\n========== PRE-FLIGHT REPORT ==========")
-                print(json.dumps(report.model_dump(), indent=2))
-            else:
-                print("\nNo structured output returned.")
-
-            if SQL_AUDIT_LOG:
-                print(f"\n========== SQL AUDIT LOG ({len(SQL_AUDIT_LOG)} queries) ==========")
-                print(json.dumps(SQL_AUDIT_LOG, indent=2))
+    print_report("PRE-FLIGHT REPORT", report)
+    if report.go_no_go.upper() != "GO":
+        return EXIT_FINDINGS
 
 
 def main():
@@ -197,7 +144,7 @@ def main():
                         help="Warehouse the pipeline uses")
     args = parser.parse_args()
 
-    asyncio.run(run(args.database, args.schema, args.role, args.warehouse))
+    run_main(lambda: run(args.database, args.schema, args.role, args.warehouse))
 
 
 if __name__ == "__main__":

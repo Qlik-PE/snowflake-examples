@@ -21,18 +21,15 @@ Usage:
 """
 
 import argparse
-import asyncio
 import json
 import re
 import textwrap
 
 from pydantic import BaseModel
-from cortex_code_agent_sdk import (
-    query,
-    CortexCodeSDKClient,
-    CortexCodeAgentOptions,
-    AssistantMessage,
-    ResultMessage,
+from cortex_code_agent_sdk import query, AssistantMessage, ResultMessage
+
+from _common import (
+    AgentRunError, make_options, run_main, run_multi_turn, run_structured, EXIT_ERROR,
 )
 
 # ---------------------------------------------------------------------------
@@ -229,42 +226,24 @@ Steps:
 
 Label this analysis: {label}
 """
-    schema = CostReport.model_json_schema()
-    report = None
-
     print(f"\n{'='*60}")
     print(f"  WORKLOAD COST AGENT — {label}")
     print(f"{'='*60}\n")
 
-    async for message in query(
-        prompt=prompt,
-        options=CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=COST_SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": schema},
-            max_turns=15,
-        ),
-    ):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if hasattr(block, "text"):
-                    print(block.text, end="")
-        elif isinstance(message, ResultMessage):
-            print(f"\n  (agent done — turns={message.num_turns}, "
-                  f"duration={message.duration_ms}ms)")
-            if message.structured_output:
-                report = CostReport.model_validate(message.structured_output)
-
-    return report
+    try:
+        return await run_structured(
+            prompt, CostReport, make_options(COST_SYSTEM_PROMPT, max_turns=15)
+        )
+    except AgentRunError as exc:
+        # A missing cost report should not abort the workflow; the comparison
+        # step reports it instead.
+        print(f"\n  Cost agent returned no report: {exc}")
+        return None
 
 
-async def run_optimizer_agent(sql: str, warehouse: str) -> OptimizationReport | None:
-    schema = OptimizationReport.model_json_schema()
-    report = None
-
+async def run_optimizer_agent(sql: str, warehouse: str) -> OptimizationReport:
     print(f"\n{'='*60}")
-    print(f"  SQL OPTIMIZER AGENT")
+    print("  SQL OPTIMIZER AGENT")
     print(f"{'='*60}\n")
 
     analyze_prompt = f"""\
@@ -284,52 +263,12 @@ equivalence (same result set). For each optimization explain the category,
 what changed, and Snowflake-specific impact. Return the structured JSON.
 """
 
-    async with CortexCodeSDKClient(
-        CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=OPTIMIZER_SYSTEM_PROMPT,
-        )
-    ) as client:
-        # Turn 1 — analyze
-        print("--- Turn 1: Analyzing anti-patterns ---\n")
-        await client.query(analyze_prompt)
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (turn 1 done — {msg.num_turns} agent turns)\n")
-
-        # Turn 2 — rewrite with structured output
-        print("--- Turn 2: Rewriting and optimizing ---\n")
-        # Turn 2 needs structured output, but options are fixed when the client is
-        # created and the SDK has no public setter, so this swaps the private
-        # _options attribute. If the running session ignores it, the result has no
-        # structured_output and the script prints "No structured output returned."
-        client._options = CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt=OPTIMIZER_SYSTEM_PROMPT,
-            output_format={"type": "json_schema", "schema": schema},
-        )
-
-        await client.query(rewrite_prompt)
-        async for msg in client.receive_response():
-            if isinstance(msg, AssistantMessage):
-                for block in msg.content:
-                    if hasattr(block, "text"):
-                        print(block.text, end="")
-            elif isinstance(msg, ResultMessage):
-                print(f"\n  (agent done — turns={msg.num_turns}, "
-                      f"duration={msg.duration_ms}ms)")
-                if msg.structured_output:
-                    report = OptimizationReport.model_validate(
-                        msg.structured_output
-                    )
-
-    return report
+    return await run_multi_turn(
+        turns=[("Analyzing anti-patterns", analyze_prompt)],
+        final=("Rewriting and optimizing", rewrite_prompt),
+        model=OptimizationReport,
+        options=make_options(OPTIMIZER_SYSTEM_PROMPT),
+    )
 
 
 async def execute_query(sql: str, warehouse: str, label: str) -> str | None:
@@ -359,10 +298,8 @@ row count as the structured output.
 
     async for message in query(
         prompt=prompt,
-        options=CortexCodeAgentOptions(
-            cwd=".",
-            allowed_tools=["SQL"],
-            system_prompt="Execute the SQL query and report the QUERY_ID and row count.",
+        options=make_options(
+            "Execute the SQL query and report the QUERY_ID and row count.",
             output_format={"type": "json_schema", "schema": ExecutionResult.model_json_schema()},
             max_turns=5,
         ),
@@ -388,13 +325,13 @@ row count as the structured output.
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-async def run(warehouse: str) -> None:
+async def run(warehouse: str) -> int | None:
     print("=" * 60)
     print("  TPCH SF100 — Cost → Optimize → Cost Workflow")
     print("=" * 60)
     print(f"\n  Warehouse: {warehouse}")
-    print(f"  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF100")
-    print(f"  LINEITEM:  ~600 million rows\n")
+    print("  Dataset:   SNOWFLAKE_SAMPLE_DATA.TPCH_SF100")
+    print("  LINEITEM:  ~600 million rows\n")
 
     # Step 1 — Execute the bad query
     print("\n" + "#" * 60)
@@ -405,7 +342,7 @@ async def run(warehouse: str) -> None:
     if not bad_query_id:
         print("\nFailed to capture query_id for the original query. "
               "Check QUERY_HISTORY manually.")
-        return
+        return EXIT_ERROR
 
     print(f"\n  Captured query_id: {bad_query_id}")
 
@@ -425,10 +362,6 @@ async def run(warehouse: str) -> None:
     print("#" * 60)
     opt_report = await run_optimizer_agent(BAD_QUERY, warehouse)
 
-    if not opt_report:
-        print("\nOptimizer did not return a report.")
-        return
-
     print(f"\n  Optimizations applied: {opt_report.optimization_count}")
     print(f"  Estimated improvement: {opt_report.estimated_improvement}")
     print(f"\n--- Optimized query ---\n{opt_report.optimized_query[:500]}...")
@@ -443,7 +376,7 @@ async def run(warehouse: str) -> None:
 
     if not good_query_id:
         print("\nFailed to capture query_id for the optimized query.")
-        return
+        return EXIT_ERROR
 
     print(f"\n  Captured query_id: {good_query_id}")
 
@@ -498,7 +431,7 @@ def main():
         help="Warehouse to execute queries on (default: COMPUTE_WH)",
     )
     args = parser.parse_args()
-    asyncio.run(run(args.warehouse))
+    run_main(lambda: run(args.warehouse))
 
 
 if __name__ == "__main__":
