@@ -1,6 +1,6 @@
 # Qlik API Agent
 
-A Snowflake Cortex Agent that works with Qlik Cloud from natural language. It can create Qlik Sense apps, set load scripts, reload apps, register Snowflake tables as Qlik datasets, and turn a Snowflake Semantic View into a documented Qlik Data Product.
+A Snowflake Cortex Agent that works with Qlik Cloud from natural language. It can create Qlik Sense apps, set load scripts and reload apps (through the Qlik MCP server), register Snowflake tables as Qlik datasets, and turn a Snowflake Semantic View into a documented Qlik Data Product.
 
 ## Architecture
 
@@ -28,9 +28,6 @@ Cortex Agent: QLIK_API_AGENT
 
 | Agent tool | Procedure | What it calls |
 |---|---|---|
-| `create_qlik_app` | `CREATE_QLIK_APP` | `POST /api/v1/apps`. `SPACE_ID` is required; without it the app would land in a personal space. |
-| `set_qlik_app_script` | `SET_QLIK_APP_SCRIPT` | `POST /api/v1/apps/{appId}/scripts` |
-| `reload_qlik_app` | `RELOAD_QLIK_APP` | `POST /api/v1/reloads`, then polls `GET /api/v1/reloads/{id}` every 10 s for up to 5 minutes |
 | `create_qlik_dataset` | `CREATE_QLIK_DATASET` | `POST /api/v1/catalog/catalog-integration/actions/create-hierarchy-for-connected-datasets` (see below) |
 | `link_glossary_to_data_product` | `LINK_GLOSSARY_TO_DATA_PRODUCT` | `GET` then `PATCH /api/data-governance/data-products/{id}` (JSON Patch `replace` on `/glossaryIds`) |
 | `get_semantic_view_ddl` | `GET_SEMANTIC_VIEW_DDL` | Snowflake `GET_DDL('SEMANTIC VIEW', …)` |
@@ -38,7 +35,7 @@ Cortex Agent: QLIK_API_AGENT
 
 ### Qlik MCP tools
 
-Everything else goes through the Qlik MCP server attached to the agent (the `mcp_servers` block in the agent spec). The skills use, among others: `qlik_search`, `qlik_search_spaces`, `qlik_create_glossary`, `qlik_create_glossary_term`, `qlik_create_data_product`, `qlik_update_data_product`, `qlik_get_data_product`, `qlik_create_dimension`, `qlik_create_measure`, `qlik_create_sheet` and `qlik_add_chart`.
+Everything else goes through the Qlik MCP server attached to the agent (the `mcp_servers` block in the agent spec). This includes the app lifecycle: `qlik_create_app`, `qlik_get_script`, `qlik_update_script`, `qlik_start_app_reload`, `qlik_get_reload_status`, `qlik_get_reload_log` and `qlik_get_data_model` (see [Qlik MCP tools](https://help.qlik.com/en-US/cloud-services/Subsystems/Hub/Content/Sense_Hub/QlikMCP/Qlik-MCP-server-tools.htm)). The skills also use, among others: `qlik_search`, `qlik_search_spaces`, `qlik_create_glossary`, `qlik_create_glossary_term`, `qlik_create_data_product`, `qlik_update_data_product`, `qlik_get_data_product`, `qlik_create_dimension`, `qlik_create_measure`, `qlik_create_sheet` and `qlik_add_chart`.
 
 The External MCP Server adds a server prefix to each tool name. The skills tell the agent to resolve the prefixed names by matching the suffix.
 
@@ -71,7 +68,7 @@ Both skills stop at **GATE** checkpoints and wait for user confirmation. For exa
    | `SET WAREHOUSE` | Warehouse for the procedures |
    | `SET QLIK_MCP_SERVER` | Fully qualified name of your External MCP Server |
    | `SECRET_STRING = '<QLIK_API_KEY>'` | Your Qlik API key |
-   | `<WAREHOUSE>` (7×) and `<QLIK_MCP_SERVER>` (1×) **inside the agent specification** | The same values as above. The spec is a `$$` literal, so session variables are **not** substituted inside it. |
+   | `<WAREHOUSE>` (4×) and `<QLIK_MCP_SERVER>` (1×) **inside the agent specification** | The same values as above. The spec is a `$$` literal, so session variables are **not** substituted inside it. |
 
 2. **Run the script:**
    ```bash

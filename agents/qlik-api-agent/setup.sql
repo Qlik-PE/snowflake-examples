@@ -8,9 +8,8 @@
 -- Objects created (in TARGET_DB.TARGET_SCHEMA):
 --   - Network rule QLIK_CLOUD_NETWORK_RULE, secrets QLIK_API_KEY_SECRET and
 --     QLIK_TENANT_SECRET, external access integration QLIK_CLOUD_EAI
---   - Procedures: CREATE_QLIK_APP, SET_QLIK_APP_SCRIPT, GET_SEMANTIC_VIEW_DDL,
---     GET_TABLE_COLUMNS, CREATE_QLIK_DATASET, LINK_GLOSSARY_TO_DATA_PRODUCT,
---     RELOAD_QLIK_APP
+--   - Procedures: GET_SEMANTIC_VIEW_DDL, GET_TABLE_COLUMNS, CREATE_QLIK_DATASET,
+--     LINK_GLOSSARY_TO_DATA_PRODUCT
 --   - Stage AGENT_SKILLS_STAGE (skill files) and agent QLIK_API_AGENT
 --
 -- Prerequisites:
@@ -22,7 +21,7 @@
 -- Before running, replace:
 --   1. The SET values below
 --   2. '<QLIK_API_KEY>' in section 2
---   3. <WAREHOUSE> (7x) and <QLIK_MCP_SERVER> (1x) inside the agent spec in
+--   3. <WAREHOUSE> (4x) and <QLIK_MCP_SERVER> (1x) inside the agent spec in
 --      section 6. The spec is a $$ literal, so session variables are NOT
 --      substituted there.
 --
@@ -71,80 +70,7 @@ CREATE OR REPLACE EXTERNAL ACCESS INTEGRATION QLIK_CLOUD_EAI
 -- 4. Stored Procedures
 -- =============================================================================
 
--- 4a. Create Qlik App (POST /api/v1/apps)
-CREATE OR REPLACE PROCEDURE CREATE_QLIK_APP(
-  APP_NAME VARCHAR,
-  SPACE_ID VARCHAR,
-  APP_DESCRIPTION VARCHAR DEFAULT ''
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'create_app'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
-AS
-$$
-import _snowflake
-import requests
-
-def create_app(session, app_name, space_id, app_description=''):
-    if not space_id or space_id.strip() == '':
-        return {'status_code': 400, 'response': 'SPACE_ID is required. Without it the app is created in personal space.'}
-    space_id = space_id.strip()
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-
-    attributes = {'name': app_name, 'spaceId': space_id}
-    if app_description:
-        attributes['description'] = app_description
-    body = {'attributes': attributes}
-    resp = requests.post(f'https://{tenant}/api/v1/apps', headers=headers, json=body, timeout=30)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except Exception:
-        return {'status_code': resp.status_code, 'response': resp.text}
-$$;
-
--- 4b. Set Qlik App Script (POST /api/v1/apps/{appId}/scripts)
-CREATE OR REPLACE PROCEDURE SET_QLIK_APP_SCRIPT(
-  APP_ID VARCHAR,
-  SCRIPT VARCHAR,
-  VERSION_MESSAGE VARCHAR DEFAULT NULL
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'set_script'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
-AS
-$$
-import _snowflake
-import requests
-import re
-
-def set_script(session, app_id, script, version_message=None):
-    if not re.match(r'^[0-9a-f\-]{36}$', app_id or ''):
-        return {'status_code': 400, 'response': 'Invalid APP_ID format (expected UUID)'}
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
-    url = f'https://{tenant}/api/v1/apps/{app_id}/scripts'
-    headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
-    body = {'script': script}
-    if version_message:
-        body['versionMessage'] = version_message
-    resp = requests.post(url, headers=headers, json=body, timeout=30)
-    try:
-        return {'status_code': resp.status_code, 'response': resp.json()}
-    except Exception:
-        return {'status_code': resp.status_code, 'response': resp.text if resp.text else 'No response body'}
-$$;
-
--- 4c. Get Semantic View DDL
+-- 4a. Get Semantic View DDL
 CREATE OR REPLACE PROCEDURE GET_SEMANTIC_VIEW_DDL(
   SEMANTIC_VIEW_NAME VARCHAR
 )
@@ -157,7 +83,7 @@ BEGIN
   RETURN OBJECT_CONSTRUCT('ddl', :ddl);
 END;
 
--- 4d. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
+-- 4b. Get Table Columns (INFORMATION_SCHEMA.COLUMNS)
 -- Identifiers are validated before being interpolated into the query.
 CREATE OR REPLACE PROCEDURE GET_TABLE_COLUMNS(
   DATABASE_NAME VARCHAR,
@@ -202,7 +128,7 @@ def get_columns(session, database_name, schema_name, table_name):
     ]
 $$;
 
--- 4e. Create Qlik Dataset (catalog-integration API)
+-- 4c. Create Qlik Dataset (catalog-integration API)
 -- Registers a Snowflake table as a Qlik dataset in a single call (no QRI or
 -- data-asset lookup). Reads the columns from INFORMATION_SCHEMA, maps them to
 -- JDBC type codes and builds the selection script.
@@ -355,7 +281,7 @@ def run(session, db, sch, tbl, space_id, connection_id, sf_role):
     }
 $$;
 
--- 4f. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
+-- 4d. Link Glossary to Data Product (PATCH /api/data-governance/data-products/{id})
 -- Reads the current glossaryIds, appends the new one, and writes the full list
 -- back with a JSON Patch "replace" (so existing links are kept).
 CREATE OR REPLACE PROCEDURE LINK_GLOSSARY_TO_DATA_PRODUCT(
@@ -406,77 +332,15 @@ def link_glossary(session, data_product_id, glossary_id):
     }
 $$;
 
--- 4g. Reload Qlik App (POST /api/v1/reloads)
--- Triggers a reload, then polls its status every 10 s for up to 5 minutes.
-CREATE OR REPLACE PROCEDURE RELOAD_QLIK_APP(
-  APP_ID VARCHAR
-)
-RETURNS VARIANT
-LANGUAGE PYTHON
-RUNTIME_VERSION = '3.10'
-HANDLER = 'reload_app'
-EXTERNAL_ACCESS_INTEGRATIONS = (QLIK_CLOUD_EAI)
-PACKAGES = ('snowflake-snowpark-python', 'requests')
-SECRETS = ('qlik_api_key' = QLIK_API_KEY_SECRET, 'qlik_tenant' = QLIK_TENANT_SECRET)
-AS
-$$
-import _snowflake
-import requests
-import re
-import time
-
-def reload_app(session, app_id):
-    if not re.match(r'^[0-9a-f\-]{36}$', app_id or ''):
-        return {'status_code': 400, 'reloaded': False, 'error': 'Invalid APP_ID format (expected UUID)'}
-    api_key = _snowflake.get_generic_secret_string('qlik_api_key')
-    tenant = _snowflake.get_generic_secret_string('qlik_tenant')
-    headers = {
-        'Authorization': f'Bearer {api_key}',
-        'Content-Type': 'application/json'
-    }
-
-    # Trigger reload
-    url = f'https://{tenant}/api/v1/reloads'
-    body = {'appId': app_id}
-    resp = requests.post(url, headers=headers, json=body, timeout=30)
-
-    if resp.status_code not in (200, 201):
-        try:
-            return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.json()}
-        except Exception:
-            return {'status_code': resp.status_code, 'reloaded': False, 'error': resp.text}
-
-    reload = resp.json()
-    reload_id = reload.get('id', '')
-    status = reload.get('status', '')
-
-    # Poll for completion (max 5 minutes)
-    poll_url = f'https://{tenant}/api/v1/reloads/{reload_id}'
-    for i in range(30):
-        if status in ('SUCCEEDED', 'FAILED', 'CANCELED', 'EXCEEDED_LIMIT'):
-            break
-        time.sleep(10)
-        poll_resp = requests.get(poll_url, headers=headers)
-        if poll_resp.status_code == 200:
-            reload = poll_resp.json()
-            status = reload.get('status', '')
-
-    return {
-        'status_code': resp.status_code,
-        'reloaded': status == 'SUCCEEDED',
-        'reload_id': reload_id,
-        'reload_status': status,
-        'app_id': app_id,
-        'duration': reload.get('duration', ''),
-        'error': reload.get('log', '') if status == 'FAILED' else None
-    }
-$$;
-
 -- NOTE: No procedures exist for these Qlik operations. The agent uses the
 -- Qlik MCP server attached in the agent spec (mcp_servers) instead:
 --   - List/search spaces:    qlik_search_spaces
 --   - Create glossary/term:  qlik_create_glossary, qlik_create_glossary_term
 --   - Create data product:   qlik_create_data_product
+--   - Create app:            qlik_create_app
+--   - Get/update app script: qlik_get_script, qlik_update_script
+--   - Reload app:            qlik_start_app_reload, qlik_get_reload_status,
+--                            qlik_get_reload_log
 -- The External MCP Server adds a server prefix to these names; the skills
 -- resolve the prefixed names by suffix.
 
@@ -530,12 +394,12 @@ instructions:
     You are an agent that integrates Snowflake with the Qlik Cloud REST API.
 
     **Capabilities:**
-    - Create Qlik Sense apps, set load scripts, and trigger reloads.
     - Register Qlik datasets from Snowflake tables.
     - Inspect Snowflake semantic views and retrieve table column metadata.
-    - Via the Qlik MCP server: list spaces, search the catalog, create glossaries
-      and terms, create data products, manage dimensions/measures, create sheets
-      and charts, and more.
+    - Via the Qlik MCP server: create Qlik Sense apps, read and update load
+      scripts, start reloads and check their status and logs, list spaces,
+      search the catalog, create glossaries and terms, create data products,
+      manage dimensions/measures, create sheets and charts, and more.
 
     **Skills:**
     - `create_data_product_from_sv` — Creates a Qlik Data Product from a Snowflake
@@ -568,40 +432,6 @@ instructions:
     - For dataset creation, always prefer create_qlik_dataset (handles column
       discovery, type mapping, and the API call in a single step).
 tools:
-  - tool_spec:
-      type: generic
-      name: create_qlik_app
-      description: "Creates a new Qlik Sense app in a specified space. SPACE_ID is required."
-      input_schema:
-        type: object
-        properties:
-          APP_NAME:
-            type: string
-            description: "Name of the Qlik app"
-          SPACE_ID:
-            type: string
-            description: "Target space ID - REQUIRED, app will fail without this"
-          APP_DESCRIPTION:
-            type: string
-            description: "Description (optional)"
-        required: [APP_NAME, SPACE_ID]
-  - tool_spec:
-      type: generic
-      name: set_qlik_app_script
-      description: "Sets the load script for a Qlik app via POST /api/v1/apps/{appId}/scripts"
-      input_schema:
-        type: object
-        properties:
-          APP_ID:
-            type: string
-            description: "The Qlik app ID"
-          SCRIPT:
-            type: string
-            description: "The Qlik load script content"
-          VERSION_MESSAGE:
-            type: string
-            description: "Version description (optional)"
-        required: [APP_ID, SCRIPT]
   - tool_spec:
       type: generic
       name: get_semantic_view_ddl
@@ -670,39 +500,10 @@ tools:
             type: string
             description: "The Qlik glossary ID to link"
         required: [DATA_PRODUCT_ID, GLOSSARY_ID]
-  - tool_spec:
-      type: generic
-      name: reload_qlik_app
-      description: "Triggers a data reload for a Qlik app and waits for completion (up to 5 minutes)"
-      input_schema:
-        type: object
-        properties:
-          APP_ID:
-            type: string
-            description: "The Qlik app ID to reload"
-        required: [APP_ID]
 tool_resources:
-  reload_qlik_app:
-    type: procedure
-    identifier: RELOAD_QLIK_APP
-    execution_environment:
-      type: warehouse
-      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
   link_glossary_to_data_product:
     type: procedure
     identifier: LINK_GLOSSARY_TO_DATA_PRODUCT
-    execution_environment:
-      type: warehouse
-      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
-  create_qlik_app:
-    type: procedure
-    identifier: CREATE_QLIK_APP
-    execution_environment:
-      type: warehouse
-      warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value
-  set_qlik_app_script:
-    type: procedure
-    identifier: SET_QLIK_APP_SCRIPT
     execution_environment:
       type: warehouse
       warehouse: <WAREHOUSE>  # Replace with $WAREHOUSE value

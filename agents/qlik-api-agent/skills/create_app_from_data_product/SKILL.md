@@ -5,7 +5,7 @@ description: Creates a Qlik Sense app from an existing Qlik Data Product. Genera
 
 ## Workflow: Create Qlik Sense App from Data Product
 
-**MCP Server**: This skill uses the Qlik MCP server attached to this agent. Tools `create_qlik_app`, `set_qlik_app_script`, `reload_qlik_app`, and `link_glossary_to_data_product` are stored-procedure tools registered directly on this agent — call them by their exact names.
+**MCP Server**: This skill uses the Qlik MCP server attached to this agent. App creation, the load script and the reload all go through the Qlik MCP tools listed below. The only stored-procedure tool on this agent that this skill may use is `link_glossary_to_data_product`.
 
 **MCP Tool Name Resolution (MANDATORY before calling any MCP tool):**
 The External MCP Server prepends a truncated server identifier to each tool name. The official Qlik MCP tool names (from Qlik Cloud documentation) are listed below. The actual registered names in your tool list will have a server prefix added, but end with the official name.
@@ -29,13 +29,21 @@ Official Qlik MCP tool names used by this skill:
 - `qlik_add_chart` — Add a chart to a sheet
 - `qlik_add_filter` — Add a filter panel to a sheet
 - `qlik_create_glossary_term_links` — Link glossary terms to app master items
+- `qlik_create_app` — Create a new Qlik Sense app in a target space
+- `qlik_get_script` — Retrieve the current app load script
+- `qlik_update_script` — Replace the full app load script
+- `qlik_start_app_reload` — Start an app reload
+- `qlik_get_reload_status` — Check reload progress and final state
+- `qlik_get_reload_log` — Retrieve the reload log for troubleshooting
+- `qlik_cancel_app_reload` — Cancel an in-progress reload
+- `qlik_get_data_model` — Inspect the app data model after reload
 
 Use the actual prefixed names in all tool calls. If a call returns "not found", re-check your tools list for the correct prefixed name.
 
 **IMPORTANT RULES**:
 - **Never create test/throwaway objects** (glossaries, apps, sheets) to probe tool names. If a tool call fails, report the error — do not create dummy objects as workarounds.
 - **Always pass SPACE_ID** when creating apps. Never omit it — omitting it creates the app in personal space.
-- Use stored procedure tool names exactly as listed above (e.g. `create_qlik_app`, not `apps__create`) for the stored procedure tools.
+- Do NOT call any Qlik REST stored procedure for app creation, scripts or reloads — use the MCP tools above.
 
 Follow these steps **strictly in order**. Do NOT skip steps. Do NOT proceed to the next step if the current step fails -- follow the rollback instructions instead.
 
@@ -237,31 +245,35 @@ Worked example (TPC-H, with the Relationships table in the order produced by `cr
 
 3. Concatenate all blocks into a single `fullScript` string separated by blank lines.
 
-4. **Create the app** — Call `create_qlik_app` (stored procedure tool) with:
-   - `APP_NAME`: "<dataProductName> Analytics"
-   - `APP_DESCRIPTION`: "Auto-generated Qlik Sense app from data product: <dataProductName>"
-   - `SPACE_ID`: the `appSpaceId` from Step 0. **THIS IS MANDATORY — never omit SPACE_ID. If SPACE_ID is omitted the app lands in the personal space which is wrong.**
+4. **Create the app** — Call `qlik_create_app` with:
+   - name: "<dataProductName> Analytics"
+   - description: "Auto-generated Qlik Sense app from data product: <dataProductName>"
+   - space ID: the `appSpaceId` from Step 0. **THIS IS MANDATORY — never omit the space ID. If it is omitted the app lands in the personal space, which is wrong.**
+   - Use the exact parameter names from the tool's input schema.
 5. Capture `appId` from the response. Add `{type: "app", id: <appId>}` to `created_artifacts`.
    - If creation fails: **STOP**.
    - **Verify** the app was created in the correct space by checking the response. If it was created in personal space, **ROLLBACK** and retry with the correct SPACE_ID.
 
-6. Call `set_qlik_app_script` (stored procedure tool) with:
-   - `APP_ID`: the `appId`
-   - `SCRIPT`: the `fullScript`
-   - `VERSION_MESSAGE`: "Initial load script from data product: <dataProductName>"
+6. Call `qlik_update_script` with the `appId` and the `fullScript` (this replaces the whole script). If the tool accepts a version message, use "Initial load script from data product: <dataProductName>".
    - If this fails: **ROLLBACK**.
+7. Call `qlik_get_script` with the `appId` and confirm the returned script matches `fullScript` (at least the `LIB CONNECT TO` line and every table block). If it does not match: **ROLLBACK**.
 
 **GATE 2**: App created with load script set (including glossary comments).
 
 ### Step 3: Reload the app
 
-1. Call `reload_qlik_app` with the `appId`.
+1. Call `qlik_start_app_reload` with the `appId`. Capture the reload ID from the response.
    - This triggers a full data reload from Snowflake into the Qlik app.
-   - If the reload fails: Report the error with details. The app still exists with the script set.
-     Common causes: expired Snowflake connection credentials, table permissions, connection name mismatch.
-     Do NOT rollback — the app is still useful. The user can fix the connection and reload manually.
 
-2. Wait for reload confirmation. Report: "App reloaded successfully. <N> tables loaded."
+2. Poll `qlik_get_reload_status` with the reload ID until the status is final (e.g. `SUCCEEDED`, `FAILED`, `CANCELED`). Poll at a reasonable interval and stop after about 5 minutes.
+   - If it is still running after that, call `qlik_cancel_app_reload`, report a timeout, and continue to Step 4.
+
+3. If the reload failed:
+   - Call `qlik_get_reload_log` with the reload ID and show the relevant error lines.
+   - Suggest a script fix if the log points to one. Common causes: expired Snowflake connection credentials, table permissions, connection name mismatch.
+   - Do NOT rollback — the app is still useful. The user can fix the connection and reload manually.
+
+4. If the reload succeeded, call `qlik_get_data_model` with the `appId` and report: "App reloaded successfully. <N> tables loaded." Check the data model for **synthetic keys** or **circular references**; if any appear, report them (the link plan in Step 2 should have prevented them).
 
 **GATE 3**: App reloaded with data. If reload failed, continue to Step 4 anyway (master items and sheets can still be created — they will populate once the app is reloaded).
 
@@ -387,5 +399,5 @@ If rollback is needed at any point:
 
 1. List all entries in `created_artifacts` (in creation order).
 2. Ask user: "The workflow failed at Step X. The following artifacts were created. Delete them?"
-3. No tool available to this agent deletes a Qlik app. Report the app ID and URL (`https://<tenant>/sense/app/<appId>`) and ask the user to delete it in the Qlik Cloud hub. Deleting the app removes all its sheets, master items and the load script.
+3. No tool available to this agent (including the Qlik MCP tools) deletes a Qlik app. Report the app ID and URL (`https://<tenant>/sense/app/<appId>`) and ask the user to delete it in the Qlik Cloud hub. Deleting the app removes all its sheets, master items and the load script.
 4. Glossary terms and links created by this skill belong to the data product's glossary; list any that were created so the user can review them.
