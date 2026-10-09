@@ -9,3 +9,6 @@ __pycache__/
 .idea/
 .vscode/
 .venv/
+
+# Local agent handoff notes (tenant details, local paths)
+AGENTS.md
